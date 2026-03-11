@@ -1,0 +1,68 @@
+spring:
+  application:
+    name: grh-backend
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:9090/realms/grh-realm
+      client:
+        registration:
+          keycloak:
+            client-id: grh-backend
+            client-secret: IaMXs825tsY6po2VjQyVOPy5KYgjz0km
+            scope:
+              - openid
+              - profile
+              - email
+            authorization-grant-type: authorization_code
+            redirect-uri: http://localhost:8081/login/oauth2/code/keycloak
+        provider:
+          keycloak:
+            issuer-uri: http://localhost:9090/realms/grh-realm
+            user-name-attribute: preferred_username
+
+
+  #  datasource:
+  #    url: jdbc:h2:mem:testdb
+  #    driverClassName: org.h2.Driver
+  #    username: sa
+  #    password:
+  #
+  #  jpa:
+  #    database-platform: org.hibernate.dialect.H2Dialect
+  #    hibernate:
+  #      ddl-auto: update
+  #    show-sql: true
+  #
+  #  h2:
+  #    console:
+  #      enabled: true
+  #      path: /h2-console
+
+  datasource:
+    url: jdbc:oracle:thin:@localhost:1521/FREEPDB1
+    driver-class-name: oracle.jdbc.OracleDriver
+    username: gerai
+    password: YOUR_PASSWORD
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    database-platform: org.hibernate.dialect.OracleDialect
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+Keycloak:
+  server-url: http://localhost:9090
+  realm: grh-realm
+  client-id: grh-backend
+  admin-username: ${KEYCLOAK_ADMIN_USERNAME:admin}
+  admin-password: ${KEYCLOAK_ADMIN_PASSWORD:REMOVED}
+server:
+  port: 8081
+  servlet:
+    context-path: /api
+
