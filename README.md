@@ -48,33 +48,70 @@ Make sure you have the following installed:
 
     **cd gerai-backend**
 
-2. Create .env File
+### 2. Create `.env` File
 
-        **cp .env.example .env**
+```bash
+cp .env.example .env
+```
 
-Open .env and fill in your values.
+Open `.env` and fill in your values:
+> See **Gmail App Password Setup** section below for `MAIL_PASSWORD`.
 
-3. Start Oracle and Keycloak with Docker
+---
 
-        **docker compose up -d**
+### 3. Start Oracle and Keycloak with Docker
 
-4. Setup Keycloak
+```bash
+docker compose up -d
+```
 
-   Open Keycloak Admin Console:
 
-        ****http://localhost:8080/admin**
-    
-        **Login: admin / your_keycloak_admin_password****
+### 4. Setup Keycloak
 
-    Create Realm:
+Open Keycloak Admin Console:
+```
+http://localhost:8080/admin
+Login: admin / your_keycloak_admin_password
+```
 
-       Left dropdown → Create realm
+#### Create Realm
 
-       Name: grh-realm
+```
+Left dropdown → Create realm
+Name: grh-realm
+Enabled: ON
+Click Create
+```
 
-       Enabled: ON
+#### Create Client
 
-       Click Create
+```
+grh-realm → Clients → Create client
+Client ID         : grh-backend
+Client Protocol   : openid-connect
+Click Next
+
+Client authentication : ON
+Authorization         : OFF
+Direct Access Grants  : ON  ← important for Postman testing
+Click Save
+```
+
+Copy the **Client Secret**:
+```
+grh-backend → Credentials tab → Client Secret → copy and paste into .env KC_CLIENT_SECRET
+```
+
+#### Create Client Roles
+
+```
+grh-backend → Roles tab → Create role (repeat for each):
+  ✅ admin
+  ✅ employees:read
+  ✅ employees:write
+  ✅ employees:update
+  ✅ employees:delete
+```
 
    Create Client:
 
