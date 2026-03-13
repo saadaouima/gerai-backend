@@ -12,17 +12,24 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+
     private final KeycloakJwtRoleConverter keycloakJwtRoleConverter;
+
     public SecurityConfig(KeycloakJwtRoleConverter keycloakJwtRoleConverter) {
         this.keycloakJwtRoleConverter = keycloakJwtRoleConverter;
     }
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+
         JwtAuthenticationConverter jwtAuthConverter = new JwtAuthenticationConverter();
-        jwtAuthConverter.setJwtGrantedAuthoritiesConverter(keycloakJwtRoleConverter); // ← uses the Spring-managed bean
+        jwtAuthConverter.setJwtGrantedAuthoritiesConverter(keycloakJwtRoleConverter);
+
         http
-                .csrf(csrf -> csrf.disable())  // Disable CSRF for stateless REST API
+                .csrf(csrf -> csrf.disable())
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)  // ← stateless REST API
+                )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.GET,    "/employees/**").hasAnyRole("admin", "employees:read")
                         .requestMatchers(HttpMethod.POST,   "/employees/**").hasAnyRole("admin", "employees:write")
@@ -33,6 +40,7 @@ public class SecurityConfig {
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthConverter))
                 );
+
         return http.build();
     }
 }

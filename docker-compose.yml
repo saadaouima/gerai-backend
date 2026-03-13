@@ -1,28 +1,33 @@
 version: '3.9'
 services:
+  # Oracle Database
   oracle-db:
     image: gvenzl/oracle-free:23-slim
-    container_name: oracle23c
+    container_name: Oracle
     ports:
-      - "1521:1521"   # Oracle listener
-      - "5500:5500"   # Enterprise Manager Express
+      - "1521:1521"
+      - "5500:5500"
     environment:
-      ORACLE_PASSWORD: REMOVED
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD}
+      APP_USER: ${DB_USERNAME}
+      APP_USER_PASSWORD: ${DB_PASSWORD}
     volumes:
       - oracle_data:/opt/oracle/oradata
 
+
+  # Keycloak
   keycloak:
-    container_name: keycloak_grh
-    image: quay.io/keycloak/keycloak:26.5.2
+    image: quay.io/keycloak/keycloak:26.5.5
+    container_name: Keycloak
     ports:
-      - 9090:8080
+      - "8080:8080"
     environment:
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: YOUR_PASSWORD
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USERNAME}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
     volumes:
       - keycloak_data:/opt/keycloak/data
     command:
-      - 'start-dev'
+      - start-dev
 
 volumes:
   oracle_data:
