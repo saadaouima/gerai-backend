@@ -143,7 +143,7 @@ grh-backend → Roles tab → Create role (repeat for each):
 ```
 grh-realm → Users → Create user
 Username      : hr.manager
-Email         : hr@company.com
+Email         : hr@example.com
 First name    : HR
 Last name     : Manager
 Email verified: ON
