@@ -150,7 +150,7 @@ Email verified: ON
 Click Create
 
 → Credentials tab → Set password
-Password  : YOUR_PASSWORD
+Password  : <your-strong-password>
 Temporary : OFF
 
 → Role mappings tab
