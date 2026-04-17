@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports
+              http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"
+              name="dashboard_report"
+              pageWidth="595" pageHeight="842"
+              orientation="Portrait"
+              columnWidth="535" leftMargin="30" rightMargin="30"
+              topMargin="20" bottomMargin="20">
+
+    <parameter name="GENERATED_DATE"          class="java.lang.String"  isForPrompting="false">
+        <defaultValueExpression><![CDATA[new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm").format(new java.util.Date())]]></defaultValueExpression>
+    </parameter>
+    <parameter name="REPORT_PERIOD"           class="java.lang.String"  isForPrompting="false">
+        <defaultValueExpression><![CDATA["Mensuel"]]></defaultValueExpression>
+    </parameter>
+
+    <parameter name="KPI_CONGES_EN_COURS"     class="java.lang.Long"    isForPrompting="false"><defaultValueExpression><![CDATA[0L]]></defaultValueExpression></parameter>
+    <parameter name="KPI_CONGES_MOIS"         class="java.lang.Long"    isForPrompting="false"><defaultValueExpression><![CDATA[0L]]></defaultValueExpression></parameter>
+    <parameter name="KPI_JOURS_CONGES"        class="java.lang.Long"    isForPrompting="false"><defaultValueExpression><![CDATA[0L]]></defaultValueExpression></parameter>
+    <parameter name="KPI_TAUX_ABSENTEISME"    class="java.lang.Double"  isForPrompting="false"><defaultValueExpression><![CDATA[0.0]]></defaultValueExpression></parameter>
+    <parameter name="KPI_ABSENTS_JOUR"        class="java.lang.Long"    isForPrompting="false"><defaultValueExpression><![CDATA[0L]]></defaultValueExpression></parameter>
+    <parameter name="KPI_DEMANDES_EN_ATTENTE" class="java.lang.Long"    isForPrompting="false"><defaultValueExpression><![CDATA[0L]]></defaultValueExpression></parameter>
+    <parameter name="KPI_DEMANDES_TRAITEES"   class="java.lang.Long"    isForPrompting="false"><defaultValueExpression><![CDATA[0L]]></defaultValueExpression></parameter>
+    <parameter name="KPI_DEMANDES_REFUSEES"   class="java.lang.Long"    isForPrompting="false"><defaultValueExpression><![CDATA[0L]]></defaultValueExpression></parameter>
+    <parameter name="KPI_FORMATIONS_EN_COURS" class="java.lang.Long"    isForPrompting="false"><defaultValueExpression><![CDATA[0L]]></defaultValueExpression></parameter>
+    <parameter name="KPI_BUDGET_FORMATION"    class="java.lang.Double"  isForPrompting="false"><defaultValueExpression><![CDATA[0.0]]></defaultValueExpression></parameter>
+    <parameter name="KPI_PROJETS_ACTIFS"      class="java.lang.Long"    isForPrompting="false"><defaultValueExpression><![CDATA[0L]]></defaultValueExpression></parameter>
+    <parameter name="KPI_TACHES_OUVERTES"     class="java.lang.Long"    isForPrompting="false"><defaultValueExpression><![CDATA[0L]]></defaultValueExpression></parameter>
+
+    <field name="DEPT_NAME"     class="java.lang.String"/>
+    <field name="HEADCOUNT"     class="java.math.BigDecimal"/>
+    <field name="NB_CONGES"     class="java.math.BigDecimal"/>
+    <field name="NB_FORMATIONS" class="java.math.BigDecimal"/>
+    <field name="NB_PROJETS"    class="java.math.BigDecimal"/>
+
+    <variable name="rowCount"   class="java.lang.Integer" calculation="Count">
+        <variableExpression><![CDATA[$F{DEPT_NAME}]]></variableExpression>
+    </variable>
+    <variable name="totalHC"    class="java.lang.Integer" calculation="Sum">
+        <variableExpression><![CDATA[$F{HEADCOUNT} != null ? $F{HEADCOUNT}.intValue() : 0]]></variableExpression>
+    </variable>
+    <variable name="totalCongesDept" class="java.lang.Integer" calculation="Sum">
+        <variableExpression><![CDATA[$F{NB_CONGES} != null ? $F{NB_CONGES}.intValue() : 0]]></variableExpression>
+    </variable>
+    <variable name="totalFormDept" class="java.lang.Integer" calculation="Sum">
+        <variableExpression><![CDATA[$F{NB_FORMATIONS} != null ? $F{NB_FORMATIONS}.intValue() : 0]]></variableExpression>
+    </variable>
+
+    <title>
+        <band height="340" splitType="Stretch">
+            <rectangle><reportElement mode="Opaque" x="0" y="0" width="535" height="70" backcolor="#050E1A"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <rectangle><reportElement mode="Opaque" x="0" y="0" width="178" height="4" backcolor="#1565C0"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <rectangle><reportElement mode="Opaque" x="178" y="0" width="179" height="4" backcolor="#00BCD4"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <rectangle><reportElement mode="Opaque" x="357" y="0" width="178" height="4" backcolor="#7B1FA2"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+
+            <rectangle><reportElement mode="Opaque" x="14" y="10" width="56" height="18" backcolor="#00BCD4"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <staticText><reportElement x="14" y="10" width="56" height="18" forecolor="#0A1929"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="10" isBold="true"/></textElement><text><![CDATA[GerAI]]></text></staticText>
+
+            <staticText><reportElement x="14" y="32" width="420" height="22" forecolor="#FFFFFF"/><textElement verticalAlignment="Middle"><font fontName="SansSerif" size="16" isBold="true"/></textElement><text><![CDATA[Tableau de Bord RH]]></text></staticText>
+            <staticText><reportElement x="14" y="55" width="300" height="12" forecolor="#80DEEA"/><textElement><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[Indicateurs Ressources Humaines – GerAI]]></text></staticText>
+            <textField><reportElement x="320" y="55" width="211" height="12" forecolor="#4DD0E1"/><textElement textAlignment="Right"><font fontName="SansSerif" size="7"/></textElement><textFieldExpression><![CDATA["Généré le : " + $P{GENERATED_DATE} + "  |  " + $P{REPORT_PERIOD}]]></textFieldExpression></textField>
+
+            <rectangle><reportElement mode="Opaque" x="0"   y="82" width="126" height="90" backcolor="#0D2A4E"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <rectangle><reportElement mode="Opaque" x="0"   y="82" width="126" height="4"  backcolor="#00BCD4"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <staticText><reportElement x="6"   y="88" width="114" height="12" forecolor="#80DEEA"/><textElement textAlignment="Center"><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[Congés en cours]]></text></staticText>
+            <textField><reportElement x="6"   y="102" width="114" height="22" forecolor="#00E5FF"/><textElement textAlignment="Center"><font fontName="SansSerif" size="18" isBold="true"/></textElement><textFieldExpression><![CDATA[$P{KPI_CONGES_EN_COURS}]]></textFieldExpression></textField>
+            <staticText><reportElement x="6"   y="128" width="60" height="11" forecolor="#64B5F6"/><textElement><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[Ce mois :]]></text></staticText>
+            <textField><reportElement x="66"  y="128" width="54" height="11" forecolor="#FFFFFF"/><textElement textAlignment="Right"><font fontName="SansSerif" size="7" isBold="true"/></textElement><textFieldExpression><![CDATA[$P{KPI_CONGES_MOIS}]]></textFieldExpression></textField>
+            <staticText><reportElement x="6"   y="142" width="60" height="11" forecolor="#64B5F6"/><textElement><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[Total jours :]]></text></staticText>
+            <textField><reportElement x="66"  y="142" width="54" height="11" forecolor="#90CAF9"/><textElement textAlignment="Right"><font fontName="SansSerif" size="7" isBold="true"/></textElement><textFieldExpression><![CDATA[$P{KPI_JOURS_CONGES}]]></textFieldExpression></textField>
+
+            <rectangle><reportElement mode="Opaque" x="136" y="82" width="126" height="90" backcolor="#0D2A4E"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <rectangle><reportElement mode="Opaque" x="136" y="82" width="126" height="4"  backcolor="#7B1FA2"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <staticText><reportElement x="142" y="88" width="114" height="12" forecolor="#CE93D8"/><textElement textAlignment="Center"><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[Taux Absentéisme]]></text></staticText>
+            <textField pattern="##0.0 '%'"><reportElement x="142" y="102" width="114" height="22" forecolor="#EA80FC"/><textElement textAlignment="Center"><font fontName="SansSerif" size="16" isBold="true"/></textElement><textFieldExpression><![CDATA[$P{KPI_TAUX_ABSENTEISME}]]></textFieldExpression></textField>
+            <staticText><reportElement x="142" y="128" width="80" height="11" forecolor="#CE93D8"/><textElement><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[Absents auj. :]]></text></staticText>
+            <textField><reportElement x="222" y="128" width="32" height="11" forecolor="#EF9A9A"/><textElement textAlignment="Right"><font fontName="SansSerif" size="7" isBold="true"/></textElement><textFieldExpression><![CDATA[$P{KPI_ABSENTS_JOUR}]]></textFieldExpression></textField>
+
+            <rectangle><reportElement mode="Opaque" x="272" y="82" width="126" height="90" backcolor="#0D2A4E"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <rectangle><reportElement mode="Opaque" x="272" y="82" width="126" height="4"  backcolor="#F57C00"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <staticText><reportElement x="278" y="88" width="114" height="12" forecolor="#FFCC80"/><textElement textAlignment="Center"><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[Demandes en attente]]></text></staticText>
+            <textField><reportElement x="278" y="102" width="114" height="22" forecolor="#FFB74D"/><textElement textAlignment="Center"><font fontName="SansSerif" size="18" isBold="true"/></textElement><textFieldExpression><![CDATA[$P{KPI_DEMANDES_EN_ATTENTE}]]></textFieldExpression></textField>
+            <staticText><reportElement x="278" y="128" width="60" height="11" forecolor="#FFCC80"/><textElement><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[Traitées :]]></text></staticText>
+            <textField><reportElement x="338" y="128" width="54" height="11" forecolor="#69F0AE"/><textElement textAlignment="Right"><font fontName="SansSerif" size="7" isBold="true"/></textElement><textFieldExpression><![CDATA[$P{KPI_DEMANDES_TRAITEES}]]></textFieldExpression></textField>
+            <staticText><reportElement x="278" y="142" width="60" height="11" forecolor="#FFCC80"/><textElement><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[Refusées :]]></text></staticText>
+            <textField><reportElement x="338" y="142" width="54" height="11" forecolor="#EF9A9A"/><textElement textAlignment="Right"><font fontName="SansSerif" size="7" isBold="true"/></textElement><textFieldExpression><![CDATA[$P{KPI_DEMANDES_REFUSEES}]]></textFieldExpression></textField>
+
+            <rectangle><reportElement mode="Opaque" x="408" y="82" width="127" height="90" backcolor="#0D2A4E"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <rectangle><reportElement mode="Opaque" x="408" y="82" width="127" height="4"  backcolor="#1565C0"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <staticText><reportElement x="414" y="88" width="115" height="12" forecolor="#90CAF9"/><textElement textAlignment="Center"><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[Projets actifs]]></text></staticText>
+            <textField><reportElement x="414" y="102" width="115" height="22" forecolor="#82B1FF"/><textElement textAlignment="Center"><font fontName="SansSerif" size="18" isBold="true"/></textElement><textFieldExpression><![CDATA[$P{KPI_PROJETS_ACTIFS}]]></textFieldExpression></textField>
+            <staticText><reportElement x="414" y="128" width="80" height="11" forecolor="#90CAF9"/><textElement><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[Tâches ouvertes :]]></text></staticText>
+            <textField><reportElement x="494" y="128" width="34" height="11" forecolor="#FFD740"/><textElement textAlignment="Right"><font fontName="SansSerif" size="7" isBold="true"/></textElement><textFieldExpression><![CDATA[$P{KPI_TACHES_OUVERTES}]]></textFieldExpression></textField>
+
+            <rectangle><reportElement mode="Opaque" x="0" y="184" width="260" height="70" backcolor="#0D2A4E"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <rectangle><reportElement mode="Opaque" x="0" y="184" width="260" height="4"  backcolor="#00897B"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <staticText><reportElement x="10"  y="192" width="200" height="12" forecolor="#80CBC4"/><textElement><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[Formations en cours]]></text></staticText>
+            <textField><reportElement x="10"  y="206" width="80"  height="22" forecolor="#A7FFEB"/><textElement><font fontName="SansSerif" size="18" isBold="true"/></textElement><textFieldExpression><![CDATA[$P{KPI_FORMATIONS_EN_COURS}]]></textFieldExpression></textField>
+            <staticText><reportElement x="10"  y="236" width="80" height="14" forecolor="#80CBC4"/><textElement><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[Budget total (TND) :]]></text></staticText>
+            <textField pattern="#,##0.00"><reportElement x="100" y="236" width="150" height="14" forecolor="#00E5FF"/><textElement textAlignment="Right"><font fontName="SansSerif" size="9" isBold="true"/></textElement><textFieldExpression><![CDATA[$P{KPI_BUDGET_FORMATION}]]></textFieldExpression></textField>
+
+            <rectangle><reportElement mode="Opaque" x="0" y="270" width="535" height="18" backcolor="#1565C0"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <staticText><reportElement x="8" y="270" width="400" height="18" forecolor="#FFFFFF"/><textElement verticalAlignment="Middle"><font fontName="SansSerif" size="9" isBold="true"/></textElement><text><![CDATA[  ▶  RÉCAPITULATIF PAR DÉPARTEMENT]]></text></staticText>
+
+            <rectangle><reportElement mode="Opaque" x="0" y="290" width="535" height="16" backcolor="#0D47A1"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <staticText><reportElement x="2"   y="290" width="160" height="16" forecolor="#FFFFFF"/><textElement verticalAlignment="Middle"><font fontName="SansSerif" size="8" isBold="true"/></textElement><text><![CDATA[ Département]]></text></staticText>
+            <staticText><reportElement x="164" y="290" width="80"  height="16" forecolor="#FFFFFF"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="8" isBold="true"/></textElement><text><![CDATA[Effectif]]></text></staticText>
+            <staticText><reportElement x="246" y="290" width="80"  height="16" forecolor="#FFFFFF"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="8" isBold="true"/></textElement><text><![CDATA[Congés]]></text></staticText>
+            <staticText><reportElement x="328" y="290" width="100" height="16" forecolor="#FFFFFF"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="8" isBold="true"/></textElement><text><![CDATA[Formations]]></text></staticText>
+            <staticText><reportElement x="430" y="290" width="103" height="16" forecolor="#FFFFFF"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="8" isBold="true"/></textElement><text><![CDATA[Projets]]></text></staticText>
+        </band>
+    </title>
+
+    <detail>
+        <band height="20">
+            <rectangle>
+                <reportElement mode="Opaque" x="0" y="0" width="535" height="20" backcolor="#E3F2FD">
+                    <printWhenExpression><![CDATA[$V{rowCount} % 2 == 0]]></printWhenExpression>
+                </reportElement>
+                <graphicElement><pen lineWidth="0.0"/></graphicElement>
+            </rectangle>
+            <line><reportElement x="0" y="19" width="535" height="1" forecolor="#BBDEFB"/><graphicElement><pen lineWidth="0.5"/></graphicElement></line>
+            <rectangle><reportElement mode="Opaque" x="0" y="0" width="3" height="20" backcolor="#1565C0"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+
+            <textField isBlankWhenNull="true"><reportElement x="6"   y="2" width="156" height="16" forecolor="#0D2A4E"/><textElement verticalAlignment="Middle"><font fontName="SansSerif" size="8" isBold="true"/></textElement><textFieldExpression><![CDATA[$F{DEPT_NAME}]]></textFieldExpression></textField>
+            <textField isBlankWhenNull="true"><reportElement x="164" y="2" width="80"  height="16" forecolor="#37474F"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="9" isBold="true"/></textElement><textFieldExpression><![CDATA[$F{HEADCOUNT}]]></textFieldExpression></textField>
+            <textField isBlankWhenNull="true"><reportElement x="246" y="2" width="80"  height="16" forecolor="#1565C0"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="8"/></textElement><textFieldExpression><![CDATA[$F{NB_CONGES}]]></textFieldExpression></textField>
+            <textField isBlankWhenNull="true"><reportElement x="328" y="2" width="100" height="16" forecolor="#00695C"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="8"/></textElement><textFieldExpression><![CDATA[$F{NB_FORMATIONS}]]></textFieldExpression></textField>
+            <textField isBlankWhenNull="true"><reportElement x="430" y="2" width="103" height="16" forecolor="#0277BD"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="8"/></textElement><textFieldExpression><![CDATA[$F{NB_PROJETS}]]></textFieldExpression></textField>
+        </band>
+    </detail>
+
+    <pageFooter>
+        <band height="16">
+            <line><reportElement x="0" y="0" width="535" height="1" forecolor="#1565C0"/><graphicElement><pen lineWidth="0.5"/></graphicElement></line>
+            <staticText><reportElement x="0" y="2" width="220" height="12" forecolor="#90A4AE"/><textElement><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[GerAI – Dashboard RH]]></text></staticText>
+            <textField><reportElement x="220" y="2" width="196" height="12" forecolor="#90A4AE"/><textElement textAlignment="Center"><font fontName="SansSerif" size="7"/></textElement><textFieldExpression><![CDATA["Généré le " + $P{GENERATED_DATE}]]></textFieldExpression></textField>
+            <textField><reportElement x="455" y="2" width="80"  height="12" forecolor="#90A4AE"/><textElement textAlignment="Right"><font fontName="SansSerif" size="7"/></textElement><textFieldExpression><![CDATA["Page " + $V{PAGE_NUMBER}]]></textFieldExpression></textField>
+        </band>
+    </pageFooter>
+
+    <summary>
+        <band height="65">
+            <rectangle><reportElement mode="Opaque" x="0" y="2" width="535" height="20" backcolor="#1565C0"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <staticText><reportElement x="6" y="2" width="156" height="20" forecolor="#FFFFFF"/><textElement verticalAlignment="Middle"><font fontName="SansSerif" size="8" isBold="true"/></textElement><text><![CDATA[ TOTAL]]></text></staticText>
+            <textField><reportElement x="164" y="2" width="80" height="20" forecolor="#FFFFFF"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="9" isBold="true"/></textElement><textFieldExpression><![CDATA[$V{totalHC}]]></textFieldExpression></textField>
+            <textField><reportElement x="246" y="2" width="80" height="20" forecolor="#FFFFFF"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="8" isBold="true"/></textElement><textFieldExpression><![CDATA[$V{totalCongesDept}]]></textFieldExpression></textField>
+            <textField><reportElement x="328" y="2" width="100" height="20" forecolor="#FFFFFF"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="8" isBold="true"/></textElement><textFieldExpression><![CDATA[$V{totalFormDept}]]></textFieldExpression></textField>
+
+            <line><reportElement x="0" y="26" width="535" height="1" forecolor="#1565C0"/><graphicElement><pen lineWidth="1.5"/></graphicElement></line>
+            <rectangle><reportElement mode="Opaque" x="0" y="30" width="535" height="32" backcolor="#050E1A"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <rectangle><reportElement mode="Opaque" x="0" y="30" width="4"   height="32" backcolor="#00BCD4"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <staticText><reportElement x="12" y="34" width="320" height="11" forecolor="#80DEEA"/><textElement><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[GerAI – Tableau de Bord Ressources Humaines – Document confidentiel]]></text></staticText>
+            <textField><reportElement x="12" y="47" width="300" height="11" forecolor="#4DD0E1"/><textElement><font fontName="SansSerif" size="7"/></textElement><textFieldExpression><![CDATA["Exporté le : " + $P{GENERATED_DATE}]]></textFieldExpression></textField>
+            <staticText><reportElement x="390" y="47" width="141" height="11" forecolor="#4DD0E1"/><textElement textAlignment="Right"><font fontName="SansSerif" size="7" isItalic="true"/></textElement><text><![CDATA[© GerAI – Tous droits réservés]]></text></staticText>
+        </band>
+    </summary>
+
+    <noData>
+        <band height="50">
+            <staticText>
+                <reportElement x="0" y="15" width="535" height="20" forecolor="#90A4AE"/>
+                <textElement textAlignment="Center"><font fontName="SansSerif" size="11"/></textElement>
+                <text><![CDATA[Aucune donnée de département disponible.]]></text>
+            </staticText>
+        </band>
+    </noData>
+
+</jasperReport>

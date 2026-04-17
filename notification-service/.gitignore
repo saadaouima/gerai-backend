@@ -1,0 +1,29 @@
+# --- ARTEFACTS DE COMPILATION (À IGNORER) ---
+# Ces fichiers sont générés par Maven, ton amie les recréera en tapant "mvn install"
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# --- CONFIGURATION IDE (À IGNORER) ---
+# On ignore les réglages propres à ton ordinateur (chemins de dossiers locaux)
+.idea/
+*.iml
+*.iws
+*.ipr
+.settings/
+.classpath
+.project
+.factorypath
+.springBeans
+.sts4-cache
+bin/
+.vscode/
+.nb-gradle/
+
+# --- FICHIERS SYSTÈME ---
+.DS_Store
+Thumbs.db
+
+.env

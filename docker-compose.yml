@@ -1,0 +1,49 @@
+version: "3.9"
+
+services:
+  # ════════════════════════════════════════
+  #  MAILHOG — Test Emails (Port 8025)
+  # ════════════════════════════════════════
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: synapse-mailhog
+    ports:
+      - "1025:1025" # Port SMTP
+      - "8025:8025" # Interface Web pour voir les mails
+    restart: unless-stopped
+    networks:
+      - synapse-network
+
+  # ════════════════════════════════════════
+  #  KAFKA STACK — Messaging
+  # ════════════════════════════════════════
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.3
+    container_name: synapse-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - synapse-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.3
+    container_name: synapse-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_HEAP_OPTS: "-Xms512M -Xmx512M"
+    networks:
+      - synapse-network
+
+networks:
+  synapse-network:
+    driver: bridge
