@@ -1,0 +1,51 @@
+version: "3.9"
+
+networks:
+  gerai-network:
+    driver: bridge
+
+volumes:
+  oracle-data:
+
+services:
+  oracle:
+    image: gvenzl/oracle-free:23-slim
+    container_name: gerai-oracle
+    restart: always
+    ports:
+      - "1521:1521"
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_ROOT_PASSWORD}
+      # On force la création de la PDB si elle n'est pas celle par défaut
+      APP_USER: ${DB_USER}
+      APP_USER_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+    networks:
+      - gerai-network
+    healthcheck:
+      # On teste la connexion sur la PDB directement
+      test: ["CMD-SHELL", "exit | sqlplus -L sys/${ORACLE_ROOT_PASSWORD}@localhost:1521/${DB_NAME} as sysdba"]
+      interval: 20s
+      timeout: 10s
+      retries: 15
+      start_period: 60s
+
+  flyway:
+    image: flyway/flyway:10-alpine
+    container_name: gerai-flyway
+    depends_on:
+      oracle:
+        condition: service_healthy
+    environment:
+      - FLYWAY_URL=jdbc:oracle:thin:@oracle:1521/${DB_NAME}
+      - FLYWAY_USER=${DB_USER}
+      - FLYWAY_PASSWORD=${DB_PASSWORD}
+      - FLYWAY_LOCATIONS=filesystem:/flyway/sql/migrations,filesystem:/flyway/sql/seeds
+      - FLYWAY_BASELINE_ON_MIGRATE=true
+    command: migrate
+    volumes:
+      - ./migrations:/flyway/sql/migrations
+      - ./seeds:/flyway/sql/seeds
+    networks:
+      - gerai-network

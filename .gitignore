@@ -1,0 +1,9 @@
+# Ignorer les fichiers de configuration personnels
+.env
+*.env
+
+# Ignorer les dossiers de build
+target/
+out/
+.idea/
+*.iml
