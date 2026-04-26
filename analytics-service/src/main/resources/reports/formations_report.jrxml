@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports
+              http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"
+              name="formations_report"
+              pageWidth="842" pageHeight="595"
+              orientation="Landscape"
+              columnWidth="782" leftMargin="30" rightMargin="30"
+              topMargin="20" bottomMargin="20">
+
+    <property name="net.sf.jasperreports.export.xls.detect.cell.type" value="true"/>
+    <property name="net.sf.jasperreports.export.xls.remove.empty.space.between.rows" value="true"/>
+
+    <parameter name="REPORT_TITLE" class="java.lang.String">
+        <defaultValueExpression><![CDATA["Rapport des Formations"]]></defaultValueExpression>
+    </parameter>
+    <parameter name="GENERATED_DATE" class="java.lang.String">
+        <defaultValueExpression><![CDATA[new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm").format(new java.util.Date())]]></defaultValueExpression>
+    </parameter>
+
+    <field name="REQUEST_ID"     class="java.math.BigDecimal"/>
+    <field name="EMPLOYE_NOM"    class="java.lang.String"/>
+    <field name="MATRICULE"      class="java.lang.String"/>
+    <field name="DEPARTEMENT"    class="java.lang.String"/>
+    <field name="TRAINING_TITLE" class="java.lang.String"/>
+    <field name="PROVIDER"       class="java.lang.String"/>
+    <field name="PLANNED_DATE"   class="java.lang.String"/>
+    <field name="DURATION_DAYS"  class="java.math.BigDecimal"/>
+    <field name="ESTIMATED_COST" class="java.math.BigDecimal"/>
+    <field name="STATUT"         class="java.lang.String"/>
+    <field name="DATE_CREATION"  class="java.lang.String"/>
+
+    <variable name="rowCount" class="java.lang.Integer" calculation="Count">
+        <variableExpression><![CDATA[$F{REQUEST_ID}]]></variableExpression>
+    </variable>
+    <variable name="totalCost" class="java.math.BigDecimal" calculation="Sum">
+        <variableExpression><![CDATA[$F{ESTIMATED_COST} != null ? $F{ESTIMATED_COST} : java.math.BigDecimal.ZERO]]></variableExpression>
+    </variable>
+    <variable name="totalDays" class="java.lang.Integer" calculation="Sum">
+        <variableExpression><![CDATA[$F{DURATION_DAYS} != null ? $F{DURATION_DAYS}.intValue() : 0]]></variableExpression>
+    </variable>
+
+    <title>
+        <band height="70" splitType="Stretch">
+            <rectangle>
+                <reportElement mode="Opaque" x="0" y="0" width="782" height="70" backcolor="#00304E"/>
+                <graphicElement><pen lineWidth="0.0"/></graphicElement>
+            </rectangle>
+            <rectangle><reportElement mode="Opaque" x="0" y="0" width="6" height="70" backcolor="#00BCD4"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+
+            <rectangle><reportElement mode="Opaque" x="14" y="10" width="60" height="18" backcolor="#00BCD4"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <staticText><reportElement x="14" y="10" width="60" height="18" forecolor="#00304E"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="9" isBold="true"/></textElement><text><![CDATA[GerAI]]></text></staticText>
+
+            <textField>
+                <reportElement x="14" y="32" width="560" height="26" forecolor="#FFFFFF"/>
+                <textElement verticalAlignment="Middle"><font fontName="SansSerif" size="19" isBold="true"/></textElement>
+                <textFieldExpression><![CDATA[$P{REPORT_TITLE}]]></textFieldExpression>
+            </textField>
+            <staticText>
+                <reportElement x="14" y="58" width="500" height="11" forecolor="#80DEEA"/>
+                <textElement><font fontName="SansSerif" size="8"/></textElement>
+                <text><![CDATA[Suivi des plans de formation, coûts et scores – Ressources Humaines GerAI]]></text>
+            </staticText>
+            <textField>
+                <reportElement x="560" y="58" width="218" height="11" forecolor="#80DEEA"/>
+                <textElement textAlignment="Right"><font fontName="SansSerif" size="7" isItalic="true"/></textElement>
+                <textFieldExpression><![CDATA["Généré le : " + $P{GENERATED_DATE}]]></textFieldExpression>
+            </textField>
+        </band>
+    </title>
+
+    <columnHeader>
+        <band height="26">
+            <rectangle>
+                <reportElement mode="Opaque" x="0" y="0" width="782" height="26" backcolor="#0288D1"/>
+                <graphicElement><pen lineWidth="0.0"/></graphicElement>
+            </rectangle>
+            <rectangle><reportElement mode="Opaque" x="0" y="23" width="782" height="3" backcolor="#00BCD4"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+
+            <staticText><reportElement x="0"   y="0" width="52"  height="23" forecolor="#FFFFFF"/>  <textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><text><![CDATA[MATRICULE]]></text></staticText>
+            <staticText><reportElement x="54"  y="0" width="110" height="23" forecolor="#FFFFFF"/>  <textElement verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><text><![CDATA[NOM EMPLOYÉ]]></text></staticText>
+            <staticText><reportElement x="166" y="0" width="80"  height="23" forecolor="#FFFFFF"/>  <textElement verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><text><![CDATA[DÉPARTEMENT]]></text></staticText>
+            <staticText><reportElement x="248" y="0" width="150" height="23" forecolor="#FFFFFF"/>   <textElement verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><text><![CDATA[FORMATION]]></text></staticText>
+            <staticText><reportElement x="400" y="0" width="80"  height="23" forecolor="#FFFFFF"/>   <textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><text><![CDATA[PRESTATAIRE]]></text></staticText>
+            <staticText><reportElement x="482" y="0" width="68"  height="23" forecolor="#FFFFFF"/>   <textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><text><![CDATA[DATE PRÉVUE]]></text></staticText>
+            <staticText><reportElement x="552" y="0" width="44"  height="23" forecolor="#FFFFFF"/>   <textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><text><![CDATA[JOURS]]></text></staticText>
+            <staticText><reportElement x="598" y="0" width="72"  height="23" forecolor="#FFFFFF"/>   <textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><text><![CDATA[COÛT (TND)]]></text></staticText>
+            <staticText><reportElement x="672" y="0" width="108" height="23" forecolor="#FFFFFF"/>   <textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><text><![CDATA[STATUT]]></text></staticText>
+        </band>
+    </columnHeader>
+
+    <detail>
+        <band height="22">
+            <rectangle>
+                <reportElement mode="Opaque" x="0" y="0" width="782" height="22" backcolor="#E1F5FE">
+                    <printWhenExpression><![CDATA[$V{rowCount} % 2 == 0]]></printWhenExpression>
+                </reportElement>
+                <graphicElement><pen lineWidth="0.0"/></graphicElement>
+            </rectangle>
+            <line><reportElement x="0" y="21" width="782" height="1" forecolor="#B3E5FC"/><graphicElement><pen lineWidth="0.5"/></graphicElement></line>
+
+            <textField isBlankWhenNull="true"><reportElement x="0"   y="2" width="52"  height="18" forecolor="#546E7A"/>  <textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="7"/></textElement><textFieldExpression><![CDATA[$F{MATRICULE}]]></textFieldExpression></textField>
+            <textField isBlankWhenNull="true"><reportElement x="54"  y="2" width="110" height="18" forecolor="#01304E"/>  <textElement verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><textFieldExpression><![CDATA[$F{EMPLOYE_NOM}]]></textFieldExpression></textField>
+            <textField isBlankWhenNull="true"><reportElement x="166" y="2" width="80"  height="18" forecolor="#37474F"/>  <textElement verticalAlignment="Middle"><font fontName="SansSerif" size="7"/></textElement><textFieldExpression><![CDATA[$F{DEPARTEMENT}]]></textFieldExpression></textField>
+            <textField isBlankWhenNull="true"><reportElement x="248" y="2" width="150" height="18" forecolor="#0277BD"/>   <textElement verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><textFieldExpression><![CDATA[$F{TRAINING_TITLE}]]></textFieldExpression></textField>
+            <textField isBlankWhenNull="true"><reportElement x="400" y="2" width="80"  height="18" forecolor="#37474F"/>   <textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="7"/></textElement><textFieldExpression><![CDATA[$F{PROVIDER}]]></textFieldExpression></textField>
+            <textField isBlankWhenNull="true"><reportElement x="482" y="2" width="68"  height="18" forecolor="#37474F"/>   <textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="7"/></textElement><textFieldExpression><![CDATA[$F{PLANNED_DATE}]]></textFieldExpression></textField>
+            <textField isBlankWhenNull="true"><reportElement x="552" y="2" width="44"  height="18" forecolor="#0D47A1"/>   <textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="8" isBold="true"/></textElement><textFieldExpression><![CDATA[$F{DURATION_DAYS}]]></textFieldExpression></textField>
+            <textField isBlankWhenNull="true" pattern="#,##0.00"><reportElement x="598" y="2" width="72" height="18" forecolor="#00695C"/><textElement textAlignment="Right" verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><textFieldExpression><![CDATA[$F{ESTIMATED_COST}]]></textFieldExpression></textField>
+            <textField isBlankWhenNull="true"><reportElement x="672" y="2" width="108" height="18" forecolor="#0288D1"/>   <textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><textFieldExpression><![CDATA[$F{STATUT}]]></textFieldExpression></textField>
+        </band>
+    </detail>
+
+    <pageFooter>
+        <band height="16">
+            <line><reportElement x="0" y="0" width="782" height="1" forecolor="#0288D1"/><graphicElement><pen lineWidth="0.5"/></graphicElement></line>
+            <staticText><reportElement x="0" y="2" width="260" height="12" forecolor="#90A4AE"/><textElement><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[GerAI – Rapport Formations RH]]></text></staticText>
+            <textField><reportElement x="260" y="2" width="262" height="12" forecolor="#90A4AE"/><textElement textAlignment="Center"><font fontName="SansSerif" size="7"/></textElement><textFieldExpression><![CDATA["Généré le " + $P{GENERATED_DATE}]]></textFieldExpression></textField>
+            <textField><reportElement x="682" y="2" width="100" height="12" forecolor="#90A4AE"/><textElement textAlignment="Right"><font fontName="SansSerif" size="7"/></textElement><textFieldExpression><![CDATA["Page " + $V{PAGE_NUMBER}]]></textFieldExpression></textField>
+        </band>
+    </pageFooter>
+
+    <summary>
+        <band height="65">
+            <line>
+                <reportElement x="0" y="4" width="782" height="1" forecolor="#0288D1"/>
+                <graphicElement><pen lineWidth="1.5"/></graphicElement>
+            </line>
+
+            <rectangle>
+                <reportElement mode="Opaque" x="0" y="10" width="782" height="45" backcolor="#00304E"/>
+                <graphicElement><pen lineWidth="0.0"/></graphicElement>
+            </rectangle>
+
+            <rectangle>
+                <reportElement mode="Opaque" x="14" y="15" width="150" height="35" backcolor="#0277BD"/>
+                <graphicElement><pen lineWidth="0.0"/></graphicElement>
+            </rectangle>
+            <staticText>
+                <reportElement x="14" y="17" width="150" height="12" forecolor="#80DEEA"/>
+                <textElement textAlignment="Center"><font fontName="SansSerif" size="8" isBold="true"/></textElement>
+                <text><![CDATA[Total Formations]]></text>
+            </staticText>
+            <textField>
+                <reportElement x="14" y="27" width="150" height="20" forecolor="#FFFFFF"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font fontName="SansSerif" size="14" isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$V{rowCount} != null ? $V{rowCount} : 0]]></textFieldExpression>
+            </textField>
+
+            <rectangle>
+                <reportElement mode="Opaque" x="175" y="15" width="150" height="35" backcolor="#0277BD"/>
+                <graphicElement><pen lineWidth="0.0"/></graphicElement>
+            </rectangle>
+            <staticText>
+                <reportElement x="175" y="17" width="150" height="12" forecolor="#80DEEA"/>
+                <textElement textAlignment="Center"><font fontName="SansSerif" size="8" isBold="true"/></textElement>
+                <text><![CDATA[Total Jours]]></text>
+            </staticText>
+            <textField>
+                <reportElement x="175" y="27" width="150" height="20" forecolor="#00BCD4"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font fontName="SansSerif" size="14" isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$V{totalDays} != null ? $V{totalDays} : 0]]></textFieldExpression>
+            </textField>
+
+            <rectangle>
+                <reportElement mode="Opaque" x="335" y="15" width="170" height="35" backcolor="#0277BD"/>
+                <graphicElement><pen lineWidth="0.0"/></graphicElement>
+            </rectangle>
+            <staticText>
+                <reportElement x="335" y="17" width="170" height="12" forecolor="#80DEEA"/>
+                <textElement textAlignment="Center"><font fontName="SansSerif" size="8" isBold="true"/></textElement>
+                <text><![CDATA[Budget Total (TND)]]></text>
+            </staticText>
+            <textField pattern="#,##0.00">
+                <reportElement x="335" y="27" width="170" height="20" forecolor="#00E5FF"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font fontName="SansSerif" size="13" isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$V{totalCost} != null ? $V{totalCost} : 0]]></textFieldExpression>
+            </textField>
+
+            <staticText>
+                <reportElement x="460" y="55" width="318" height="10" forecolor="#4DD0E1"/>
+                <textElement textAlignment="Right"><font fontName="SansSerif" size="7" isItalic="true"/></textElement>
+                <text><![CDATA[© GerAI – Système de Gestion RH Intelligent  |  Document Confidentiel]]></text>
+            </staticText>
+        </band>
+    </summary>
+
+</jasperReport>

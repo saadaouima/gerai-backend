@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports
+              http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"
+              name="conges_report_excel"
+              pageWidth="842" pageHeight="595"
+              orientation="Landscape"
+              columnWidth="802" leftMargin="20" rightMargin="20"
+              topMargin="0" bottomMargin="0"
+              isIgnorePagination="true">
+
+    <property name="net.sf.jasperreports.export.xls.detect.cell.type" value="true"/>
+    <property name="net.sf.jasperreports.export.xls.remove.empty.space.between.rows" value="true"/>
+    <property name="net.sf.jasperreports.export.xls.remove.empty.space.between.columns" value="true"/>
+    <property name="net.sf.jasperreports.export.xls.white.page.background" value="false"/>
+    <property name="net.sf.jasperreports.export.xls.ignore.graphics" value="true"/>
+    <property name="net.sf.jasperreports.export.xls.freeze.row" value="2"/>
+
+    <parameter name="REPORT_TITLE" class="java.lang.String"/>
+
+    <field name="MATRICULE"      class="java.lang.String"/>
+    <field name="EMPLOYE_NOM"    class="java.lang.String"/>
+    <field name="DEPARTEMENT"    class="java.lang.String"/>
+    <field name="DATE_DEBUT"     class="java.lang.String"/>
+    <field name="DATE_FIN"       class="java.lang.String"/>
+    <field name="NB_JOURS"       class="java.math.BigDecimal"/>
+    <field name="STATUT"         class="java.lang.String"/>
+    <field name="MOTIF"          class="java.lang.String"/>
+
+    <title>
+        <band height="30">
+            <textField>
+                <reportElement x="0" y="0" width="802" height="30" forecolor="#1A237E"/>
+                <textElement verticalAlignment="Middle">
+                    <font size="14" isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[$P{REPORT_TITLE}]]></textFieldExpression>
+            </textField>
+        </band>
+    </title>
+
+    <columnHeader>
+        <band height="20">
+            <staticText>
+                <reportElement mode="Opaque" x="0" y="0" width="80" height="20" backcolor="#3F51B5" forecolor="#FFFFFF"/>
+                <box><pen lineWidth="0.5" lineColor="#000000"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="9" isBold="true"/></textElement>
+                <text><![CDATA[MATRICULE]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="80" y="0" width="150" height="20" backcolor="#3F51B5" forecolor="#FFFFFF"/>
+                <box><pen lineWidth="0.5" lineColor="#000000"/></box>
+                <textElement verticalAlignment="Middle"><font size="9" isBold="true"/></textElement>
+                <text><![CDATA[NOM EMPLOYÉ]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="230" y="0" width="120" height="20" backcolor="#3F51B5" forecolor="#FFFFFF"/>
+                <box><pen lineWidth="0.5" lineColor="#000000"/></box>
+                <textElement verticalAlignment="Middle"><font size="9" isBold="true"/></textElement>
+                <text><![CDATA[DÉPARTEMENT]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="350" y="0" width="80" height="20" backcolor="#3F51B5" forecolor="#FFFFFF"/>
+                <box><pen lineWidth="0.5" lineColor="#000000"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="9" isBold="true"/></textElement>
+                <text><![CDATA[DÉBUT]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="430" y="0" width="80" height="20" backcolor="#3F51B5" forecolor="#FFFFFF"/>
+                <box><pen lineWidth="0.5" lineColor="#000000"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="9" isBold="true"/></textElement>
+                <text><![CDATA[FIN]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="510" y="0" width="50" height="20" backcolor="#3F51B5" forecolor="#FFFFFF"/>
+                <box><pen lineWidth="0.5" lineColor="#000000"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="9" isBold="true"/></textElement>
+                <text><![CDATA[JOURS]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="560" y="0" width="100" height="20" backcolor="#3F51B5" forecolor="#FFFFFF"/>
+                <box><pen lineWidth="0.5" lineColor="#000000"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="9" isBold="true"/></textElement>
+                <text><![CDATA[STATUT]]></text>
+            </staticText>
+            <staticText>
+                <reportElement mode="Opaque" x="660" y="0" width="142" height="20" backcolor="#3F51B5" forecolor="#FFFFFF"/>
+                <box><pen lineWidth="0.5" lineColor="#000000"/></box>
+                <textElement verticalAlignment="Middle"><font size="9" isBold="true"/></textElement>
+                <text><![CDATA[MOTIF]]></text>
+            </staticText>
+        </band>
+    </columnHeader>
+
+    <detail>
+        <band height="20">
+            <textField isBlankWhenNull="true">
+                <reportElement x="0" y="0" width="80" height="20"/>
+                <box><pen lineWidth="0.5" lineColor="#D1D1D1"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{MATRICULE}]]></textFieldExpression>
+            </textField>
+            <textField isBlankWhenNull="true">
+                <reportElement x="80" y="0" width="150" height="20"/>
+                <box><pen lineWidth="0.5" lineColor="#D1D1D1"/><leftPen lineWidth="0.5"/></box>
+                <textElement verticalAlignment="Middle"><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{EMPLOYE_NOM}]]></textFieldExpression>
+            </textField>
+            <textField isBlankWhenNull="true">
+                <reportElement x="230" y="0" width="120" height="20"/>
+                <box><pen lineWidth="0.5" lineColor="#D1D1D1"/></box>
+                <textElement verticalAlignment="Middle"><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{DEPARTEMENT}]]></textFieldExpression>
+            </textField>
+            <textField isBlankWhenNull="true">
+                <reportElement x="350" y="0" width="80" height="20"/>
+                <box><pen lineWidth="0.5" lineColor="#D1D1D1"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{DATE_DEBUT}]]></textFieldExpression>
+            </textField>
+            <textField isBlankWhenNull="true">
+                <reportElement x="430" y="0" width="80" height="20"/>
+                <box><pen lineWidth="0.5" lineColor="#D1D1D1"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{DATE_FIN}]]></textFieldExpression>
+            </textField>
+            <textField isBlankWhenNull="true">
+                <reportElement x="510" y="0" width="50" height="20"/>
+                <box><pen lineWidth="0.5" lineColor="#D1D1D1"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{NB_JOURS}]]></textFieldExpression>
+            </textField>
+            <textField isBlankWhenNull="true">
+                <reportElement x="560" y="0" width="100" height="20"/>
+                <box><pen lineWidth="0.5" lineColor="#D1D1D1"/></box>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{STATUT}]]></textFieldExpression>
+            </textField>
+            <textField isBlankWhenNull="true">
+                <reportElement x="660" y="0" width="142" height="20"/>
+                <box><pen lineWidth="0.5" lineColor="#D1D1D1"/></box>
+                <textElement verticalAlignment="Middle"><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{MOTIF}]]></textFieldExpression>
+            </textField>
+        </band>
+    </detail>
+</jasperReport>

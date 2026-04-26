@@ -1,0 +1,9 @@
+.env
+*.env
+.idea/
+target/
+out/
+build/
+*.class
+*.iml
+chat-service/chatdb.mv.db

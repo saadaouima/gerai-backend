@@ -1,0 +1,15 @@
+-- init-user.sql
+ALTER SESSION SET CONTAINER = FREEPDB1;
+
+-- Suppression si existe (pour faciliter les relances)
+-- DROP USER gerai_user CASCADE;
+
+CREATE USER gerai_user IDENTIFIED BY gerai123
+    DEFAULT TABLESPACE USERS
+    TEMPORARY TABLESPACE TEMP
+    QUOTA UNLIMITED ON USERS;
+
+GRANT CONNECT, RESOURCE, DBA TO gerai_user;
+GRANT UNLIMITED TABLESPACE TO gerai_user;
+
+EXIT;
