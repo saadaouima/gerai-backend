@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.gerai</groupId>
+    <artifactId>gerai-backend</artifactId>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+    <name>GerAI Backend</name>
+    <description>Plateforme RH intégrée — aggregator POM</description>
+
+    <modules>
+        <module>employe-service</module>
+        <module>analytics-service</module>
+        <module>chat-service</module>
+        <module>demandes-service</module>
+        <module>notification-service</module>
+        <module>projets-service</module>
+        <module>taches-service</module>
+    </modules>
+
+</project>
