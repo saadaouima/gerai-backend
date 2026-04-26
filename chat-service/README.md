@@ -140,4 +140,4 @@ Lors de l'ajout de nouveaux participants à un groupe, assurez-vous que leurs **
 
 ---
 
-© 2026 Synapse Platform - Chat Service
+© 2026 GerAI Backend - Chat Service

@@ -6,29 +6,29 @@ services:
   # ════════════════════════════════════════
   mailhog:
     image: mailhog/mailhog:latest
-    container_name: synapse-mailhog
+    container_name: gerai-mailhog
     ports:
       - "1025:1025" # Port SMTP
       - "8025:8025" # Interface Web pour voir les mails
     restart: unless-stopped
     networks:
-      - synapse-network
+      - gerai_default
 
   # ════════════════════════════════════════
   #  KAFKA STACK — Messaging
   # ════════════════════════════════════════
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.3
-    container_name: synapse-zookeeper
+    container_name: gerai-zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     networks:
-      - synapse-network
+      - gerai_default
 
   kafka:
     image: confluentinc/cp-kafka:7.5.3
-    container_name: synapse-kafka
+    container_name: gerai-kafka
     depends_on:
       - zookeeper
     ports:
@@ -42,8 +42,8 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_HEAP_OPTS: "-Xms512M -Xmx512M"
     networks:
-      - synapse-network
+      - gerai_default
 
 networks:
-  synapse-network:
+  gerai_default:
     driver: bridge

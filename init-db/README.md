@@ -125,4 +125,4 @@ spring.datasource.password=${DB_PASSWORD}
 
 ---
 
-© 2026 Synapse Platform - Database Management Module
+© 2026 GerAI Backend - Database Management Module

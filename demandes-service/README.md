@@ -119,4 +119,4 @@ Les notifications générées par ce service sont envoyées via **Kafka** (`topi
 
 ---
 
-© 2026 Synapse Platform - Demandes Service
+© 2026 GerAI Backend - Demandes Service

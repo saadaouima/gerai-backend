@@ -1,17 +1,20 @@
-# 🧠 Synapse — Plateforme RH Intégrée
+# GerAI Backend — Plateforme RH Intégrée
 
-Bienvenue dans le projet **Synapse**.  
+Bienvenue dans le projet **GerAI Backend**.  
 Cette architecture microservices gère les **ressources humaines**, la **communication en temps réel** et les **analyses prédictives**.
 
 ---
 
 ## 🏗️ Architecture du Projet
 
-- `database/` : Infrastructure **Oracle 23c** et migrations **Flyway**
+- `init-db/` : Infrastructure **Oracle 23c** et migrations **Flyway**
+- `employe-service/` : Gestion des employés (**Port 8081**)
 - `analytics-service/` : Calculs statistiques (**Port 8087**)
 - `chat-service/` : Messagerie temps réel **WebSockets** (**Port 8086**)
 - `demandes-service/` : Gestion des flux métiers (**Port 8085**)
 - `notification-service/` : Envoi de mails et notifications (**Port 8084**)
+- `projets-service/` : Gestion des projets (**Port 8087**)
+- `taches-service/` : Gestion des tâches (**Port 8088**)
 - `docker-compose.yml` : Services d'infrastructure (**Kafka, MailHog**)
 
 ---
@@ -29,11 +32,11 @@ Ceci démarre **Kafka** (Messaging) et **MailHog** (Emails de test).
 ---
 
 ## 2. Initialiser la Base de Données
-Allez dans le dossier `database` et suivez le README spécifique :
+Allez dans le dossier `init-db` et suivez le README spécifique :
 
 ```bash
-cd database
-make db-init
+cd init-db
+docker-compose up -d
 ````
 ## 3. Lancer les Microservices
 Chaque service doit être lancé dans son propre terminal (ou via IntelliJ) en suivant cet ordre recommandé :
@@ -58,4 +61,4 @@ Copiez-le en `.env` dans chaque dossier avant de démarrer les services.
 
 ---
 
-© 2026 Synapse Team
+© 2026 GerAI Team
