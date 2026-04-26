@@ -1,15 +1,51 @@
 version: "3.9"
 
 services:
+  # ═════════════════════════════════���══════
+  #  ORACLE DATABASE
   # ════════════════════════════════════════
+  oracle-db:
+    image: gvenzl/oracle-free:23-slim
+    container_name: gerai-oracle
+    ports:
+      - "1521:1521"
+      - "5500:5500"
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD}
+      APP_USER: ${DB_USERNAME}
+      APP_USER_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - oracle_data:/opt/oracle/oradata
+    networks:
+      - gerai_default
+
+  # ════════════════════════════════════════
+  #  KEYCLOAK — Identity Provider (Port 8080)
+  # ════════════════════════════════════════
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.5.5
+    container_name: gerai-keycloak
+    ports:
+      - "8080:8080"
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USERNAME}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+    command:
+      - start-dev
+    networks:
+      - gerai_default
+
+  # ═══════════════════════════════��════════
   #  MAILHOG — Test Emails (Port 8025)
   # ════════════════════════════════════════
   mailhog:
     image: mailhog/mailhog:latest
     container_name: gerai-mailhog
     ports:
-      - "1025:1025" # Port SMTP
-      - "8025:8025" # Interface Web pour voir les mails
+      - "1025:1025"
+      - "8025:8025"
     restart: unless-stopped
     networks:
       - gerai_default
@@ -43,6 +79,10 @@ services:
       KAFKA_HEAP_OPTS: "-Xms512M -Xmx512M"
     networks:
       - gerai_default
+
+volumes:
+  oracle_data:
+  keycloak_data:
 
 networks:
   gerai_default:
