@@ -28,7 +28,7 @@ public class ReportController {
     /* ── Congés ──────────────────────────────────────── */
 
     @GetMapping("/conges/pdf")
-    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN')")
+    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN','ADMIN_RH')")
     public ResponseEntity<byte[]> congesPdf(
             Authentication auth,
             @RequestParam(required = false) Long deptId) throws Exception {
@@ -37,7 +37,7 @@ public class ReportController {
     }
 
     @GetMapping("/conges/excel")
-    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN')")
+    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN','ADMIN_RH')")
     public ResponseEntity<byte[]> congesExcel(
             Authentication auth,
             @RequestParam(required = false) Long deptId) throws Exception {
@@ -48,7 +48,7 @@ public class ReportController {
     /* ── Formations ──────────────────────────────────── */
 
     @GetMapping("/formations/pdf")
-    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN')")
+    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN','ADMIN_RH')")
     public ResponseEntity<byte[]> formationsPdf(
             Authentication auth,
             @RequestParam(required = false) Long deptId) throws Exception {
@@ -57,7 +57,7 @@ public class ReportController {
     }
 
     @GetMapping("/formations/excel")
-    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN')")
+    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN','ADMIN_RH')")
     public ResponseEntity<byte[]> formationsExcel(
             Authentication auth,
             @RequestParam(required = false) Long deptId) throws Exception {
@@ -68,7 +68,7 @@ public class ReportController {
     /* ── Dashboard (RH uniquement) ───────────────────── */
 
     @GetMapping("/dashboard/pdf")
-    @PreAuthorize("hasAnyRole('RH','ADMIN')")
+    @PreAuthorize("hasAnyRole('RH','ADMIN','ADMIN_RH')")
     public ResponseEntity<byte[]> dashboardPdf() throws Exception {
         log.info("[Report] PDF Dashboard RH global");
         return pdf(reportService.generateDashboardPdf(), "dashboard_rh.pdf");
@@ -77,7 +77,7 @@ public class ReportController {
     /* ── Fiche employé ───────────────────────────────── */
 
     @GetMapping("/employe/{employeId}/pdf")
-    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN')")
+    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN','ADMIN_RH')")
     public ResponseEntity<byte[]> ficheEmployePdf(@PathVariable Long employeId) throws Exception {
         log.info("[Report] Génération PDF Fiche employé ID={}", employeId);
 

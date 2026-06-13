@@ -32,6 +32,10 @@ public class Notification {
     @Column(name = "EMPLOYEE_ID")
     private Long employeeId;
 
+    /** For broadcast notifications (no employeeId). Values: ADMIN, CHEF, EMPLOYE */
+    @Column(name = "ROLE", length = 20)
+    private String role;
+
     /* ───────────────────────────────────────────── */
     /* 🔹 Type                                      */
     /* ───────────────────────────────────────────── */

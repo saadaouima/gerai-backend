@@ -27,7 +27,7 @@ public class ProjetDTO {
 
     /* Alias Angular : dateDebut / datefin */
     public LocalDate getDateDebut() { return startDate; }
-    public LocalDate getDatefin()   { return endDate;   }
+    public LocalDate getDateFin()   { return endDate;   }
 
     private String  statut;       // Angular utilise 'statut'
     private String  priority;

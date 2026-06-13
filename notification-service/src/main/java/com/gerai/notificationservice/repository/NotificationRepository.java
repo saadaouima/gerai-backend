@@ -28,6 +28,13 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     List<Notification> findByEmployeeIdOrderByCreatedAtDesc(Long employeeId);
 
     /**
+     * Notifications personnelles + broadcasts pour ce rôle (triées par date décroissante).
+     */
+    @Query("SELECT n FROM Notification n WHERE n.employeeId = :employeeId OR n.role = :role ORDER BY n.createdAt DESC")
+    List<Notification> findByEmployeeOrRole(@Param("employeeId") Long employeeId,
+                                            @Param("role") String role);
+
+    /**
      * Notifications NON LUES d’un employé.
      */
     List<Notification> findByEmployeeIdAndIsReadFalseOrderByCreatedAtDesc(Long employeeId);
@@ -52,11 +59,12 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
            UPDATE Notification n
            SET n.isRead = true,
                n.readAt = :readAt
-           WHERE n.employeeId = :employeeId
+           WHERE (n.employeeId = :employeeId OR n.role = :role)
              AND n.isRead = false
            """)
-    int markAllAsReadByEmployee(@Param("employeeId") Long employeeId,
-                                @Param("readAt") LocalDateTime readAt);
+    int markAllAsReadByEmployeeOrRole(@Param("employeeId") Long employeeId,
+                                      @Param("role") String role,
+                                      @Param("readAt") LocalDateTime readAt);
 
 
     /* ───────────────────────────────────────────── */

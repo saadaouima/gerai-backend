@@ -8,7 +8,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * Entité mappée sur GERAI_USER.TRAINING_REQUESTS (11 colonnes).
+ * Entité mappée sur GERAI.TRAINING_REQUESTS (11 colonnes).
  *
  * Statuts valides (CHECK Oracle) :
  *   EN_ATTENTE | APPROUVE_CHEF | APPROUVE_RH | REFUSE | ANNULE
@@ -46,6 +46,14 @@ public class TrainingRequest {
     @Column(name = "DURATION_DAYS")
     private Integer durationDays;
 
+    /** Lieu / site de la formation — VARCHAR2(200) */
+    @Column(name = "LIEU", length = 200)
+    private String lieu;
+
+    /** Mode : PRESENTIEL | DISTANCIEL | HYBRIDE — VARCHAR2(20) */
+    @Column(name = "MODE_FORMATION", length = 20)
+    private String modeFormation;
+
     /** Justification de la demande — VARCHAR2(500) */
     @Column(name = "REASON", length = 500)
     private String reason;
@@ -58,9 +66,20 @@ public class TrainingRequest {
     @Builder.Default
     private String status = "EN_ATTENTE";
 
-    /** FK → EMPLOYEES.employee_id (RH qui a approuvé) */
+    /** FK → EMPLOYEES.employee_id — chef qui valide (étape 1) */
     @Column(name = "APPROVED_BY")
     private Long approvedBy;
+
+    /** FK → EMPLOYEES.employee_id — agent RH qui valide/rejette (étape 2) */
+    @Column(name = "APPROVED_BY_RH")
+    private Long approvedByRh;
+
+    @Column(name = "APPROVED_AT_RH")
+    private LocalDateTime approvedAtRh;
+
+    /** Nom complet extrait du JWT Keycloak au moment de la validation RH */
+    @Column(name = "APPROVED_BY_RH_NAME", length = 200)
+    private String approvedByRhName;
 
     @Column(name = "CREATED_AT", nullable = false, updatable = false)
     private LocalDateTime createdAt;

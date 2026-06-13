@@ -1,6 +1,10 @@
 package com.gerai.chat.config;
 
+import com.gerai.chat.service.KeycloakAdminService;
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
@@ -10,17 +14,27 @@ import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.stereotype.Component;
 
 import java.security.Principal;
+import java.util.Optional;
 
 /**
- * Intercepteur STOMP adapté à la nouvelle architecture.
+ * Intercepteur STOMP.
  *
  * Extrait du JWT :
- *  - sub       → id Keycloak (pour le routing STOMP /user/{id}/...)
- *  - employee_id → ID Oracle (pour les opérations métier ChatService)
+ *  - sub         → keycloakId (UUID)
+ *  - employee_id → ID Oracle ; si absent, résolu depuis EMPLOYEES.USER_ID via DB
  *  - name / preferred_username → nom d'affichage
+ *
+ * getName() retourne toujours l'ID Oracle (numérique) pour que le routing STOMP
+ * /user/{id}/queue/... corresponde à ce que broadcastToConversation() envoie.
  */
+@Slf4j
 @Component
 public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
+
+    // @Lazy to avoid potential circular dependency through WebSocketConfig
+    @Lazy
+    @Autowired
+    private KeycloakAdminService keycloakAdminService;
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
@@ -40,8 +54,9 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
             if (token != null) {
                 TokenInfo info = extractTokenInfo(token);
                 accessor.setUser(new StompPrincipal(info.keycloakId(), info.employeeId(), info.nom()));
+                log.debug("[Chat-WS] CONNECT keycloakId={} employeeId={}", info.keycloakId(), info.employeeId());
             } else {
-                System.out.println("[Chat-WS] Aucun token STOMP");
+                log.warn("[Chat-WS] CONNECT sans token STOMP");
             }
         }
         return message;
@@ -57,16 +72,37 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
                         new com.fasterxml.jackson.databind.ObjectMapper();
                 com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(payload);
 
-                // sub = UUID Keycloak (pour le routing STOMP)
                 String keycloakId = node.get("sub").asText();
 
-                // employee_id Oracle (pour le métier)
-                String employeeId = keycloakId; // fallback
+                // Try employee_id claim first
+                String employeeId = null;
                 if (node.has("employee_id") && !node.get("employee_id").isNull()) {
-                    employeeId = node.get("employee_id").asText();
+                    String raw = node.get("employee_id").asText();
+                    if (!raw.isBlank() && !raw.equals("null")) {
+                        employeeId = raw;
+                    }
                 }
 
-                // Nom d'affichage
+                // employee_id not in JWT — resolve from DB using the Keycloak sub
+                if (employeeId == null) {
+                    try {
+                        Optional<Long> dbId = keycloakAdminService.findEmployeeIdByKeycloakId(keycloakId);
+                        if (dbId.isPresent()) {
+                            employeeId = dbId.get().toString();
+                            log.info("[Chat-WS] Resolved employee_id={} from DB for sub={}", employeeId, keycloakId);
+                        }
+                    } catch (Exception ex) {
+                        log.warn("[Chat-WS] DB lookup for employee_id failed (sub={}): {}", keycloakId, ex.getMessage());
+                    }
+                }
+
+                // Last resort: use Keycloak UUID — message will be dropped by envoyerMessageWs
+                // but at least the connection succeeds
+                if (employeeId == null) {
+                    employeeId = keycloakId;
+                    log.warn("[Chat-WS] No employee_id found for sub={} — WS send will fail", keycloakId);
+                }
+
                 String nom = keycloakId;
                 if (node.has("name") && !node.get("name").asText().isBlank()) {
                     nom = node.get("name").asText();
@@ -107,7 +143,9 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 
         @Override
         public String getName() {
-            return keycloakId; // STOMP routing par UUID Keycloak
+            // STOMP user routing keyed by Oracle employee_id (falls back to Keycloak UUID
+            // for users without an employee_id JWT claim, e.g. the first admin login)
+            return employeeId;
         }
     }
 

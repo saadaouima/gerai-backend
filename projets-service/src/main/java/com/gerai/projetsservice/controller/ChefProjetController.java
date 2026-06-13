@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 /**
  * ═══════════════════════════════════════════════════════════
@@ -40,31 +41,87 @@ class ChefProjetController {
     private final ProjetService projetService;
 
     @GetMapping("/projets")
-    @PreAuthorize("hasRole('CHEF')")
+    @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
     public ResponseEntity<List<ProjetDTO>> getProjets(Authentication auth) {
-        return ResponseEntity.ok(projetService.getProjetsChef(auth));
+        try {
+            return ResponseEntity.ok(projetService.getProjetsChef(auth));
+        } catch (Exception e) {
+            log.error("getProjets failed: {}", e.getMessage());
+            return ResponseEntity.ok(List.of());
+        }
+    }
+
+    @GetMapping("/projets/{id}")
+    @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
+    public ResponseEntity<?> getProjetById(
+            @PathVariable Long id,
+            Authentication auth) {
+        try {
+            return ResponseEntity.ok(projetService.getProjetById(id, auth));
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", "Projet introuvable"));
+        } catch (SecurityException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "Accès interdit à ce projet"));
+        } catch (Exception e) {
+            log.error("getProjetById failed: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/taches")
+    @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
+    public ResponseEntity<List<TacheDTO>> getTaches(Authentication auth) {
+        try {
+            return ResponseEntity.ok(projetService.getTachesChef(auth));
+        } catch (Exception e) {
+            log.error("getTaches failed: {}", e.getMessage());
+            return ResponseEntity.ok(List.of());
+        }
     }
 
     @PostMapping("/projets")
-    @PreAuthorize("hasRole('CHEF')")
-    public ResponseEntity<ProjetDTO> createProjet(
+    @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
+    public ResponseEntity<?> createProjet(
             @Valid @RequestBody CreateProjetRequest req,
             Authentication auth) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(projetService.createProjet(req, auth));
+        try {
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(projetService.createProjet(req, auth));
+        } catch (IllegalArgumentException e) {
+            log.warn("createProjet rejected: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            log.error("createProjet failed: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
     }
 
     @PutMapping("/projets/{id}")
-    @PreAuthorize("hasRole('CHEF')")
-    public ResponseEntity<ProjetDTO> updateProjet(
+    @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
+    public ResponseEntity<?> updateProjet(
             @PathVariable Long id,
             @RequestBody UpdateProjetRequest req,
             Authentication auth) {
-        return ResponseEntity.ok(projetService.updateProjet(id, req, auth));
+        try {
+            return ResponseEntity.ok(projetService.updateProjet(id, req, auth));
+        } catch (IllegalArgumentException e) {
+            log.warn("updateProjet rejected: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            log.error("updateProjet failed: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
     }
 
     @DeleteMapping("/projets/{id}")
-    @PreAuthorize("hasRole('CHEF')")
+    @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
     public ResponseEntity<Void> deleteProjet(
             @PathVariable Long id,
             Authentication auth) {
@@ -73,24 +130,34 @@ class ChefProjetController {
     }
 
     @GetMapping("/employes")
-    @PreAuthorize("hasRole('CHEF')")
-    public ResponseEntity<List<EmployeDTO>> getEmployes() {
-        return ResponseEntity.ok(projetService.getEmployes());
+    @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
+    public ResponseEntity<List<EmployeDTO>> getEmployes(Authentication auth) {
+        return ResponseEntity.ok(projetService.getEmployes(auth));
     }
 
     @PostMapping("/projets/{id}/membres")
-    @PreAuthorize("hasRole('CHEF')")
-    public ResponseEntity<ProjetDTO> addMembres(
+    @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
+    public ResponseEntity<?> addMembres(
             @PathVariable Long id,
             @RequestBody List<Long> employeeIds,
             Authentication auth) {
-        UpdateProjetRequest req = new UpdateProjetRequest();
-        req.setMembreIds(employeeIds);
-        return ResponseEntity.ok(projetService.updateProjet(id, req, auth));
+        try {
+            UpdateProjetRequest req = new UpdateProjetRequest();
+            req.setMembreIds(employeeIds);
+            return ResponseEntity.ok(projetService.updateProjet(id, req, auth));
+        } catch (IllegalArgumentException e) {
+            log.warn("addMembres rejected: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            log.error("addMembres failed: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
     }
 
     @PostMapping("/taches")
-    @PreAuthorize("hasRole('CHEF')")
+    @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
     public ResponseEntity<TacheDTO> createTache(
             @Valid @RequestBody CreateTacheRequest req,
             Authentication auth) {
@@ -99,7 +166,7 @@ class ChefProjetController {
     }
 
     @PutMapping("/taches/{id}")
-    @PreAuthorize("hasRole('CHEF')")
+    @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
     public ResponseEntity<TacheDTO> updateTache(
             @PathVariable Long id,
             @RequestBody CreateTacheRequest req,
@@ -108,11 +175,20 @@ class ChefProjetController {
     }
 
     @PostMapping("/taches/{id}/assign")
-    @PreAuthorize("hasRole('CHEF')")
+    @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
     public ResponseEntity<TacheDTO> assignTache(
             @PathVariable Long id,
             @RequestBody Map<String, Long> body,
             Authentication auth) {
         return ResponseEntity.ok(projetService.assignTache(id, body.get("employeeId"), auth));
+    }
+
+    @DeleteMapping("/taches/{id}")
+    @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
+    public ResponseEntity<Void> deleteTache(
+            @PathVariable Long id,
+            Authentication auth) {
+        projetService.deleteTache(id, auth);
+        return ResponseEntity.noContent().build();
     }
 }

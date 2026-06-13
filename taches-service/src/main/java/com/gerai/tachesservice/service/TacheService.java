@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.Objects;
 
 /**
  * TacheService
@@ -127,18 +128,20 @@ public class TacheService {
     public List<TacheDTO> getTachesEmploye(Authentication auth) {
         Long empId = resolveEmployeeId(auth);
         log.info("[Tache] getTachesEmploye | empId={}", empId);
-        return tacheRepo.findByAssignedToOrderByCreatedAtDesc(empId)
-                .stream()
-                .map(t -> toTacheDTOSansProjet(t))
+        List<Task> tasks = tacheRepo.findByAssignedToOrderByCreatedAtDesc(empId);
+        Map<Long, String> projetNoms = resolveProjetNoms(tasks);
+        return tasks.stream()
+                .map(t -> toTacheDTOAvecNom(t, projetNoms.get(t.getProjectId())))
                 .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
     public List<TacheDTO> getTachesActives(Authentication auth) {
         Long empId = resolveEmployeeId(auth);
-        return tacheRepo.findActivesForEmployee(empId)
-                .stream()
-                .map(t -> toTacheDTOSansProjet(t))
+        List<Task> tasks = tacheRepo.findActivesForEmployee(empId);
+        Map<Long, String> projetNoms = resolveProjetNoms(tasks);
+        return tasks.stream()
+                .map(t -> toTacheDTOAvecNom(t, projetNoms.get(t.getProjectId())))
                 .collect(Collectors.toList());
     }
 
@@ -174,9 +177,6 @@ public class TacheService {
 
         if (assignedTo != null) {
             notifProducer.notifierAssignation(task, projet);
-        }
-        if (!creatorId.equals(assignedTo)) {
-            notifProducer.notifierChefCreation(task, projet, creatorId);
         }
 
         return toTacheDTO(task, projet);
@@ -250,7 +250,11 @@ public class TacheService {
 
         if (!oracleStatut.equals(ancienStatut)) {
             ProjetDTO projet = fetchProjet(task.getProjectId());
-            notifProducer.notifierStatutChange(task, ancienStatut, projet);
+            // Skip notifying the chef if they are the one who changed the status
+            boolean changedByChef = projet != null && empId.equals(projet.getCreatedBy());
+            if (!changedByChef) {
+                notifProducer.notifierStatutChange(task, ancienStatut, projet);
+            }
         }
 
         return toTacheDTOSansProjet(task);
@@ -347,6 +351,47 @@ public class TacheService {
         return TacheDTO.builder()
                 .id(t.getTaskId())
                 .titre(t.getTitle())
+                .projetId(t.getProjectId())
+                .priorite(prioriteLabel)
+                .prioriteColor(toPrioriteColor(prioriteLabel))
+                .statut(toAngularStatut(t.getStatus()))
+                .echeance(t.getDueDate())
+                .dateCreation(t.getCreatedAt())
+                .assigneA(assigneNom)
+                .assigneId(t.getAssignedTo())
+                .creePar(t.getCreatedBy())
+                .progression(t.getProgressPct())
+                .description(t.getDescription())
+                .build();
+    }
+
+    /**
+     * Batch-résolution des noms de projet pour une liste de tâches.
+     * Une seule boucle Feign sur les IDs uniques — évite N appels individuels.
+     */
+    private Map<Long, String> resolveProjetNoms(List<Task> tasks) {
+        Map<Long, String> noms = new HashMap<>();
+        tasks.stream()
+                .map(Task::getProjectId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .forEach(pid -> {
+                    ProjetDTO p = fetchProjet(pid);
+                    if (p != null) noms.put(pid, p.getNom());
+                });
+        return noms;
+    }
+
+    /** Mapper allégé avec nom de projet pré-résolu (évite un appel Feign par tâche). */
+    private TacheDTO toTacheDTOAvecNom(Task t, String projetNom) {
+        String assigneNom    = t.getAssignedTo() != null
+                ? empRepo.findFullNameById(t.getAssignedTo()) : null;
+        String prioriteLabel = toAngularPriorite(t.getPriority());
+
+        return TacheDTO.builder()
+                .id(t.getTaskId())
+                .titre(t.getTitle())
+                .projet(projetNom)
                 .projetId(t.getProjectId())
                 .priorite(prioriteLabel)
                 .prioriteColor(toPrioriteColor(prioriteLabel))

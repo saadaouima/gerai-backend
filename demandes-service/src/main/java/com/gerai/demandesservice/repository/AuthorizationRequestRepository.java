@@ -16,44 +16,76 @@ public interface AuthorizationRequestRepository extends JpaRepository<Authorizat
 
     List<AuthorizationRequest> findByStatusOrderByCreatedAtDesc(String status);
 
-    /* ── REQUÊTES NATIVES POUR L'ESPACE CHEF ── */
+    /* ── HIÉRARCHIE (MANAGER_ID) ── */
 
-    /**
-     * Utilisé dans getDemandesEquipe (toutes les demandes de l'équipe)
-     */
     @Query(value = """
-            SELECT ar.* FROM GERAI_USER.AUTHORIZATION_REQUESTS ar
-            JOIN GERAI_USER.EMPLOYEES e ON ar.EMPLOYEE_ID = e.EMPLOYEE_ID
-            WHERE e.MANAGER_ID = :managerEmployeeId
+            SELECT ar.* FROM GERAI.AUTHORIZATION_REQUESTS ar
+            JOIN GERAI.EMPLOYEES e ON ar.EMPLOYEE_ID = e.EMPLOYEE_ID
+            WHERE e.MANAGER_ID = :chefId
             ORDER BY ar.CREATED_AT DESC
             """, nativeQuery = true)
-    List<AuthorizationRequest> findByManager(@Param("managerEmployeeId") Long managerEmployeeId);
+    List<AuthorizationRequest> findByManagerViaHierarchy(@Param("chefId") Long chefId);
 
-    /**
-     * Surcharge pour supporter l'appel à 2 paramètres dans DemandeService (ligne 155)
-     */
     @Query(value = """
-            SELECT ar.* FROM GERAI_USER.AUTHORIZATION_REQUESTS ar
-            JOIN GERAI_USER.EMPLOYEES e ON ar.EMPLOYEE_ID = e.EMPLOYEE_ID
-            WHERE e.MANAGER_ID = :managerEmployeeId
+            SELECT ar.* FROM GERAI.AUTHORIZATION_REQUESTS ar
+            JOIN GERAI.EMPLOYEES e ON ar.EMPLOYEE_ID = e.EMPLOYEE_ID
+            WHERE e.MANAGER_ID = :chefId
               AND ar.STATUS = :status
             ORDER BY ar.CREATED_AT DESC
             """, nativeQuery = true)
-    List<AuthorizationRequest> findByManager(
-            @Param("managerEmployeeId") Long managerEmployeeId,
+    List<AuthorizationRequest> findByManagerViaHierarchyAndStatus(
+            @Param("chefId") Long chefId,
             @Param("status") String status);
 
-    /**
-     * Utilisé dans getDemandesEnAttenteChef (ligne 171)
-     */
+    /* ── PROJET (PROJECT_MEMBERS) ── */
+
     @Query(value = """
-            SELECT ar.* FROM GERAI_USER.AUTHORIZATION_REQUESTS ar
-            JOIN GERAI_USER.EMPLOYEES e ON ar.EMPLOYEE_ID = e.EMPLOYEE_ID
-            WHERE e.MANAGER_ID = :managerEmployeeId
+            SELECT ar.* FROM GERAI.AUTHORIZATION_REQUESTS ar
+            WHERE ar.EMPLOYEE_ID IN (
+              SELECT DISTINCT pm.EMPLOYEE_ID
+              FROM GERAI.PROJECT_MEMBERS pm
+              JOIN GERAI.PROJECTS p ON pm.PROJECT_ID = p.PROJECT_ID
+              WHERE p.CREATED_BY = :chefId AND pm.IS_ACTIVE = 1
+            )
+            ORDER BY ar.CREATED_AT DESC
+            """, nativeQuery = true)
+    List<AuthorizationRequest> findByManagerViaProject(@Param("chefId") Long chefId);
+
+    @Query(value = """
+            SELECT ar.* FROM GERAI.AUTHORIZATION_REQUESTS ar
+            WHERE ar.EMPLOYEE_ID IN (
+              SELECT DISTINCT pm.EMPLOYEE_ID
+              FROM GERAI.PROJECT_MEMBERS pm
+              JOIN GERAI.PROJECTS p ON pm.PROJECT_ID = p.PROJECT_ID
+              WHERE p.CREATED_BY = :chefId AND pm.IS_ACTIVE = 1
+            )
               AND ar.STATUS = :status
             ORDER BY ar.CREATED_AT DESC
             """, nativeQuery = true)
-    List<AuthorizationRequest> findByManagerAndStatus(
-            @Param("managerEmployeeId") Long managerEmployeeId,
+    List<AuthorizationRequest> findByManagerViaProjectAndStatus(
+            @Param("chefId") Long chefId,
             @Param("status") String status);
+
+    /* ── Compatibilité appels existants — merge hiérarchie + projet ── */
+
+    default List<AuthorizationRequest> findByManager(Long chefId) {
+        java.util.Map<Long, AuthorizationRequest> seen = new java.util.LinkedHashMap<>();
+        findByManagerViaHierarchy(chefId).forEach(e -> seen.put(e.getRequestId(), e));
+        findByManagerViaProject(chefId).forEach(e -> seen.putIfAbsent(e.getRequestId(), e));
+        return new java.util.ArrayList<>(seen.values());
+    }
+
+    default List<AuthorizationRequest> findByManager(Long chefId, String status) {
+        java.util.Map<Long, AuthorizationRequest> seen = new java.util.LinkedHashMap<>();
+        findByManagerViaHierarchyAndStatus(chefId, status).forEach(e -> seen.put(e.getRequestId(), e));
+        findByManagerViaProjectAndStatus(chefId, status).forEach(e -> seen.putIfAbsent(e.getRequestId(), e));
+        return new java.util.ArrayList<>(seen.values());
+    }
+
+    default List<AuthorizationRequest> findByManagerAndStatus(Long chefId, String status) {
+        return findByManager(chefId, status);
+    }
+
+    /** Fallback dept-based: toutes les demandes pour une liste d'employés */
+    List<AuthorizationRequest> findByEmployeeIdIn(java.util.List<Long> employeeIds);
 }

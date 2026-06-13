@@ -22,6 +22,7 @@ public class EmployeeService {
     private final KeycloakUserService        keycloakUserService;
     private final PasswordGeneratorService   passwordGeneratorService;
     private final EmailService               emailService;
+    private final EmployeeEventProducer      employeeEventProducer;
 
     // ─────────────────────────────────────────
     // CREATE
@@ -29,29 +30,111 @@ public class EmployeeService {
     @Transactional
     public CreateEmployeeResponse createEmployee(CreateEmployeeRequest request) {
 
-        if (employeeRepository.existsByEmail(request.getEmail())) {
-            throw new IllegalArgumentException(
-                    "Employee with email " + request.getEmail() + " already exists"
-            );
+        // Check for email conflict
+        Optional<Employee> existingOpt = employeeRepository.findByEmail(request.getEmail());
+        if (existingOpt.isPresent()) {
+            Employee existing = existingOpt.get();
+
+            // Verify whether a Keycloak user actually exists for this email
+            String kcId = null;
+            try {
+                kcId = keycloakUserService.findUserIdByEmail(request.getEmail());
+            } catch (Exception e) {
+                log.warn("Could not verify Keycloak for {}: {}", request.getEmail(), e.getMessage());
+            }
+
+            if (kcId != null) {
+                // Fully set up — reject as a real duplicate
+                throw new IllegalArgumentException(
+                        "Employee with email " + request.getEmail() + " already exists");
+            }
+
+            // Orphaned: DB record exists but Keycloak user is gone — re-provision KC
+            log.info("Orphaned employee {} (id={}) — re-provisioning Keycloak account",
+                     request.getEmail(), existing.getId());
+            String tempPwd = passwordGeneratorService.generate();
+            String username = (request.getUsername() != null && !request.getUsername().isBlank())
+                    ? request.getUsername()
+                    : buildUsername(existing.getFirstName(), existing.getLastName());
+            try {
+                var result = keycloakUserService.provisionKeycloakUser(
+                        username, existing.getEmail(),
+                        existing.getFirstName(), existing.getLastName(), tempPwd);
+
+                if (request.getRoles() != null && !request.getRoles().isEmpty()) {
+                    try { keycloakUserService.assignRealmRoles(result.userId(), request.getRoles()); }
+                    catch (Exception roleEx) {
+                        log.warn("Role assignment failed for orphan {}: {}", result.userId(), roleEx.getMessage());
+                    }
+                }
+
+                existing.setKeycloakUserId(result.userId());
+                Employee saved = employeeRepository.save(existing);
+                log.info("Orphaned employee {} linked to new Keycloak user {}", saved.getId(), result.userId());
+
+                try { employeeEventProducer.notifierNouvelEmploye(saved); } catch (Exception ignored) {}
+
+                emailService.sendTemporaryPassword(
+                        saved.getEmail(), saved.getFirstName(), result.username(), tempPwd);
+
+                return CreateEmployeeResponse.builder()
+                        .id(saved.getId())
+                        .employeeCode(saved.getEmployeeCode())
+                        .username(result.username())
+                        .firstName(saved.getFirstName())
+                        .lastName(saved.getLastName())
+                        .email(saved.getEmail())
+                        .hireDate(saved.getHireDate())
+                        .deptId(saved.getDeptId())
+                        .positionId(saved.getPositionId())
+                        .managerId(saved.getManagerId())
+                        .status(saved.getStatus())
+                        .keycloakUserId(saved.getKeycloakUserId())
+                        .temporaryPassword(tempPwd)
+                        .createdAt(saved.getCreatedAt())
+                        .build();
+
+            } catch (Exception ex) {
+                log.error("KC re-provisioning failed for orphaned employee {}: {}",
+                          request.getEmail(), ex.getMessage());
+                throw new RuntimeException("Keycloak provisioning failed: " + ex.getMessage(), ex);
+            }
         }
 
         // 1. Generate secure temporary password
         String tempPassword = passwordGeneratorService.generate();
 
-        // 2. Create Keycloak user first
-        String keycloakUserId;
+        // 2. Provision Keycloak user:
+        //    - If the email already has a Keycloak account → reuse their ID and reset password
+        //    - Otherwise → create a new account
+        String  keycloakUserId;
+        boolean keycloakIsNew;
+        String  keycloakUsername;
         try {
-            keycloakUserId = keycloakUserService.createKeycloakUser(
+            var result = keycloakUserService.provisionKeycloakUser(
                     request.getUsername(),
                     request.getEmail(),
                     request.getFirstName(),
                     request.getLastName(),
                     tempPassword
             );
-            log.info("Keycloak user created with id: {}", keycloakUserId);
+            keycloakUserId   = result.userId();
+            keycloakIsNew    = result.isNew();
+            keycloakUsername = result.username();
+            log.info("Keycloak user {} (newly created: {})", keycloakUserId, keycloakIsNew);
+
+            // Assign only the roles explicitly selected during creation
+            if (request.getRoles() != null && !request.getRoles().isEmpty()) {
+                try {
+                    keycloakUserService.assignRealmRoles(keycloakUserId, request.getRoles());
+                } catch (Exception roleEx) {
+                    log.warn("Role assignment failed for {} — user created but may lack roles: {}",
+                            keycloakUserId, roleEx.getMessage());
+                }
+            }
         } catch (Exception ex) {
-            log.error("Failed to create Keycloak user: {}", ex.getMessage());
-            throw new RuntimeException("Keycloak user creation failed: " + ex.getMessage(), ex);
+            log.error("Keycloak provisioning failed for {}: {}", request.getEmail(), ex.getMessage());
+            throw new RuntimeException("Keycloak provisioning failed: " + ex.getMessage(), ex);
         }
 
         // 3. Build and save employee in Oracle DB
@@ -84,17 +167,21 @@ public class EmployeeService {
             Employee saved = employeeRepository.save(employee);
             log.info("Employee saved in DB with id: {}", saved.getId());
 
+            // Notify admins of the new employee (fire-and-forget)
+            try { employeeEventProducer.notifierNouvelEmploye(saved); } catch (Exception ignored) {}
+
             // Send temp password via email — never store it
             emailService.sendTemporaryPassword(
                     saved.getEmail(),
                     saved.getFirstName(),
-                    request.getUsername(),
+                    keycloakUsername,
                     tempPassword
             );
 
             return CreateEmployeeResponse.builder()
                     .id(saved.getId())                   // Long Oracle IDENTITY
                     .employeeCode(saved.getEmployeeCode())
+                    .username(keycloakUsername)
                     .firstName(saved.getFirstName())
                     .lastName(saved.getLastName())
                     .email(saved.getEmail())
@@ -109,12 +196,18 @@ public class EmployeeService {
                     .build();
 
         } catch (Exception ex) {
-            // DB failed → rollback Keycloak user to avoid orphan
-            log.error("DB save failed, rolling back Keycloak user: {}", keycloakUserId);
-            keycloakUserService.deleteKeycloakUser(keycloakUserId);
-            throw new RuntimeException(
-                    "Employee save failed, Keycloak user rolled back: " + ex.getMessage(), ex
-            );
+            if (keycloakIsNew) {
+                log.error("DB save failed, rolling back newly created Keycloak user {}: {}", keycloakUserId, ex.getMessage());
+                try {
+                    keycloakUserService.deleteKeycloakUser(keycloakUserId);
+                    log.info("Keycloak user {} rolled back successfully", keycloakUserId);
+                } catch (Exception rollbackEx) {
+                    log.error("Keycloak rollback failed for {}: {}", keycloakUserId, rollbackEx.getMessage());
+                }
+                throw new RuntimeException("Employee save failed, Keycloak user rolled back: " + ex.getMessage(), ex);
+            }
+            log.error("DB save failed for employee {} (pre-existing Keycloak user kept): {}", request.getEmail(), ex.getMessage());
+            throw new RuntimeException("Employee save failed: " + ex.getMessage(), ex);
         }
     }
 
@@ -161,22 +254,36 @@ public class EmployeeService {
     }
 
     // ─────────────────────────────────────────
-    // DELETE — CORRECTION : UUID → Long
+    // DELETE — soft-delete fallback when FK constraints prevent hard delete
     // ─────────────────────────────────────────
     @Transactional
     public void deleteEmployee(Long id) {
         Employee employee = getEmployeeById(id);
 
-        try {
-            keycloakUserService.deleteKeycloakUser(employee.getKeycloakUserId());
-            log.info("Keycloak user deleted: {}", employee.getKeycloakUserId());
-        } catch (Exception ex) {
-            log.error("Failed to delete Keycloak user: {}", ex.getMessage());
-            throw new RuntimeException("Keycloak deletion failed: " + ex.getMessage(), ex);
+        // 1. Disable the Keycloak account — don't fail if Keycloak is unreachable
+        //    or the user was already removed
+        String kcId = employee.getKeycloakUserId();
+        if (kcId != null && !kcId.isBlank()) {
+            try {
+                keycloakUserService.deleteKeycloakUser(kcId);
+                log.info("Keycloak user deleted: {}", kcId);
+            } catch (Exception ex) {
+                log.warn("Keycloak deletion skipped for {} ({}): {}", kcId, id, ex.getMessage());
+            }
         }
 
-        employeeRepository.delete(employee);
-        log.info("Employee deleted from DB: {}", id);
+        // 2. Try hard delete; fall back to soft delete if FK constraints block it
+        try {
+            employeeRepository.delete(employee);
+            log.info("Employee hard-deleted from DB: {}", id);
+            try { employeeEventProducer.notifierDepartEmploye(employee); } catch (Exception ignored) {}
+        } catch (Exception ex) {
+            log.warn("Hard delete blocked for employee {} (FK constraint?), soft-deleting: {}", id, ex.getMessage());
+            employee.setStatus("DEMISSION");
+            employeeRepository.save(employee);
+            log.info("Employee soft-deleted (STATUS=DEMISSION): {}", id);
+            try { employeeEventProducer.notifierDepartEmploye(employee); } catch (Exception ignored) {}
+        }
     }
 
     // ─────────────────────────────────────────
@@ -184,6 +291,26 @@ public class EmployeeService {
     // ─────────────────────────────────────────
     public Optional<Employee> getEmployeeByEmail(String email) {
         return employeeRepository.findByEmail(email);
+    }
+
+    // ─────────────────────────────────────────
+    // SEARCH BY NAME / EMAIL (free text)
+    // ─────────────────────────────────────────
+    public List<Employee> searchByQuery(String q) {
+        return employeeRepository.searchByQuery(q);
+    }
+
+    // ─────────────────────────────────────────
+    // HELPER — username Keycloak (prénom.nom normalisé)
+    // ─────────────────────────────────────────
+    private String buildUsername(String firstName, String lastName) {
+        java.util.function.Function<String, String> norm = s ->
+            java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
+                .replaceAll("[\\p{InCombiningDiacriticalMarks}]", "")
+                .toLowerCase()
+                .replaceAll("\\s+", ".");
+        return norm.apply(firstName != null ? firstName : "") + "." +
+               norm.apply(lastName  != null ? lastName  : "");
     }
 
     // ─────────────────────────────────────────

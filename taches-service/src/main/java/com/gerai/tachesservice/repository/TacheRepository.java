@@ -6,10 +6,11 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
- * Repository sur GERAI_USER.TASKS.
+ * Repository sur GERAI.TASKS.
  *
  * Colonnes TASKS (V2__projects_tasks.sql) :
  *   task_id, project_id, title, description, assigned_to,
@@ -40,7 +41,7 @@ public interface TacheRepository extends JpaRepository<Task, Long> {
        Utilisé par TacheService.getTachesActives() côté Angular
     */
     @Query(value = """
-            SELECT t.* FROM GERAI_USER.TASKS t
+            SELECT t.* FROM GERAI.TASKS t
             WHERE t.ASSIGNED_TO = :employeeId
               AND t.STATUS NOT IN ('TERMINE','BLOQUE')
             ORDER BY t.DUE_DATE ASC NULLS LAST
@@ -51,8 +52,8 @@ public interface TacheRepository extends JpaRepository<Task, Long> {
        Pour le dashboard Chef : voir toutes les tâches de son équipe
     */
     @Query(value = """
-            SELECT t.* FROM GERAI_USER.TASKS t
-            JOIN GERAI_USER.EMPLOYEES e ON t.ASSIGNED_TO = e.EMPLOYEE_ID
+            SELECT t.* FROM GERAI.TASKS t
+            JOIN GERAI.EMPLOYEES e ON t.ASSIGNED_TO = e.EMPLOYEE_ID
             WHERE e.DEPT_ID = :deptId
               AND t.STATUS <> 'TERMINE'
             ORDER BY t.DUE_DATE ASC NULLS LAST
@@ -63,9 +64,9 @@ public interface TacheRepository extends JpaRepository<Task, Long> {
        Projets créés par les employés du département
     */
     @Query(value = """
-            SELECT t.* FROM GERAI_USER.TASKS t
-            JOIN GERAI_USER.PROJECTS p ON t.PROJECT_ID = p.PROJECT_ID
-            JOIN GERAI_USER.EMPLOYEES e ON p.CREATED_BY = e.EMPLOYEE_ID
+            SELECT t.* FROM GERAI.TASKS t
+            JOIN GERAI.PROJECTS p ON t.PROJECT_ID = p.PROJECT_ID
+            JOIN GERAI.EMPLOYEES e ON p.CREATED_BY = e.EMPLOYEE_ID
             WHERE e.DEPT_ID = :deptId
             ORDER BY t.CREATED_AT DESC
             """, nativeQuery = true)
@@ -75,10 +76,20 @@ public interface TacheRepository extends JpaRepository<Task, Long> {
        Angular envoie "Prénom Nom" dans le champ assigneA
     */
     @Query(value = """
-            SELECT t.* FROM GERAI_USER.TASKS t
-            JOIN GERAI_USER.EMPLOYEES e ON t.ASSIGNED_TO = e.EMPLOYEE_ID
+            SELECT t.* FROM GERAI.TASKS t
+            JOIN GERAI.EMPLOYEES e ON t.ASSIGNED_TO = e.EMPLOYEE_ID
             WHERE UPPER(e.FIRST_NAME || ' ' || e.LAST_NAME) = UPPER(:fullName)
             ORDER BY t.CREATED_AT DESC
             """, nativeQuery = true)
     List<Task> findByAssigneeFullName(@Param("fullName") String fullName);
+
+    /** Tâches en retard : échéance dépassée, statut actif (ni terminé ni bloqué). */
+    @Query(value = """
+            SELECT t.* FROM GERAI.TASKS t
+            WHERE t.STATUS NOT IN ('TERMINE', 'BLOQUE')
+              AND t.DUE_DATE < :today
+              AND t.CREATED_BY IS NOT NULL
+            ORDER BY t.DUE_DATE ASC
+            """, nativeQuery = true)
+    List<Task> findOverdueTasks(@Param("today") LocalDate today);
 }

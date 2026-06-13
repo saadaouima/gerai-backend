@@ -12,12 +12,11 @@ import org.springframework.stereotype.Service;
  * Service centralisé pour toutes les notifications liées aux projets.
  *
  * Événements couverts :
- *   1. Projet créé          → notification au chef (confirmation)
- *   2. Membre ajouté        → notification à l'employé ajouté
- *   3. Tâche assignée       → notification à l'employé assigné
- *   4. Tâche terminée       → notification au chef du projet
- *   5. Projet terminé       → notification à tous les membres
- *   6. Projet modifié       → notification aux membres actifs
+ *   1. Membre ajouté        → notification à l'employé ajouté
+ *   2. Tâche assignée       → notification à l'employé assigné
+ *   3. Tâche terminée       → notification au chef du projet
+ *   4. Projet terminé       → notification à tous les membres
+ *   5. Projet modifié       → notification aux membres actifs
  */
 @Slf4j
 @Service
@@ -27,37 +26,26 @@ public class ProjectNotificationService {
     private final ProjectEventProducer producer;
     private final EmployeService       employeService;
 
-    private static final String SOURCE  = "PROJET-SERVICE";
+    private static final String SOURCE   = "PROJET-SERVICE";
     private static final String REF_TYPE = "PROJET";
     private static final String TASK_REF = "TACHE";
 
-    /* ═══════════════════════════════════════════════════════
-       1. PROJET CRÉÉ → chef reçoit une confirmation
-       ═══════════════════════════════════════════════════════ */
-
-    public void notifierProjetCree(Project project, Long chefId) {
-        EmployeDTO chef = employeService.getEmployeById(chefId);
-        emit(
-                chefId,
-                chef != null ? chef.getEmail() : null,
-                "INFO",
-                "Projet créé avec succès",
-                "Votre projet « " + project.getName() + " » a été créé. "
-                        + "Vous pouvez maintenant ajouter des membres et créer des tâches.",
-                project.getProjectId(),
-                chefId,
-                REF_TYPE
-        );
+    private String nomComplet(EmployeDTO emp, String fallback) {
+        if (emp == null) return fallback;
+        if (emp.getNomComplet() != null && !emp.getNomComplet().isBlank()) return emp.getNomComplet();
+        String full = ((emp.getPrenom() != null ? emp.getPrenom() : "") + " "
+                     + (emp.getNom()    != null ? emp.getNom()    : "")).trim();
+        return full.isEmpty() ? fallback : full;
     }
 
     /* ═══════════════════════════════════════════════════════
-       2. MEMBRE AJOUTÉ AU PROJET → employé notifié
+       1. MEMBRE AJOUTÉ AU PROJET → employé notifié
        ═══════════════════════════════════════════════════════ */
 
     public void notifierMembreAjoute(Project project, Long employeeId, Long chefId) {
         EmployeDTO emp  = employeService.getEmployeById(employeeId);
         EmployeDTO chef = employeService.getEmployeById(chefId);
-        String chefNom  = chef != null ? chef.getNomComplet() : "votre chef";
+        String chefNom  = nomComplet(chef, "votre chef");
 
         emit(
                 employeeId,
@@ -68,7 +56,8 @@ public class ProjectNotificationService {
                         + "Connectez-vous pour consulter les détails et vos tâches.",
                 project.getProjectId(),
                 chefId,
-                REF_TYPE
+                REF_TYPE,
+                "/employe/projets"
         );
     }
 
@@ -81,7 +70,7 @@ public class ProjectNotificationService {
 
         EmployeDTO emp  = employeService.getEmployeById(task.getAssignedTo());
         EmployeDTO chef = employeService.getEmployeById(chefId);
-        String chefNom  = chef != null ? chef.getNomComplet() : "votre chef";
+        String chefNom  = nomComplet(chef, "votre chef");
         String echeance = task.getDueDate() != null
                 ? " (échéance : " + task.getDueDate() + ")" : "";
 
@@ -94,7 +83,8 @@ public class ProjectNotificationService {
                         + "dans le projet « " + task.getProject().getName() + " »" + echeance + ".",
                 task.getProject().getProjectId(),
                 chefId,
-                TASK_REF
+                TASK_REF,
+                "/employe/taches"
         );
     }
 
@@ -105,7 +95,7 @@ public class ProjectNotificationService {
     public void notifierTacheTerminee(Task task, Long employeeId) {
         Long chefId = task.getProject().getCreatedBy();
         EmployeDTO emp  = employeService.getEmployeById(employeeId);
-        String empNom   = emp != null ? emp.getNomComplet() : "Un employé";
+        String empNom   = nomComplet(emp, "Un employé");
 
         emit(
                 chefId,
@@ -116,7 +106,8 @@ public class ProjectNotificationService {
                         + "dans le projet « " + task.getProject().getName() + " ».",
                 task.getProject().getProjectId(),
                 employeeId,
-                TASK_REF
+                TASK_REF,
+                "/chef/projets"
         );
     }
 
@@ -134,7 +125,7 @@ public class ProjectNotificationService {
             EmployeDTO emp = employeService.getEmployeById(empId);
             emit(empId, emp != null ? emp.getEmail() : null,
                     "DEMANDE_APPROUVEE", "Projet terminé", message,
-                    project.getProjectId(), chefId, REF_TYPE);
+                    project.getProjectId(), chefId, REF_TYPE, "/employe/projets");
         }
 
         // Notif au chef
@@ -142,7 +133,7 @@ public class ProjectNotificationService {
         emit(chefId, chef != null ? chef.getEmail() : null,
                 "DEMANDE_APPROUVEE", "Projet terminé",
                 "Votre projet « " + project.getName() + " » est marqué comme terminé.",
-                project.getProjectId(), chefId, REF_TYPE);
+                project.getProjectId(), chefId, REF_TYPE, "/chef/projets");
     }
 
     /* ═══════════════════════════════════════════════════════
@@ -160,7 +151,7 @@ public class ProjectNotificationService {
             EmployeDTO emp = employeService.getEmployeById(empId);
             emit(empId, emp != null ? emp.getEmail() : null,
                     "INFO", "Projet mis à jour", message,
-                    project.getProjectId(), chefId, REF_TYPE);
+                    project.getProjectId(), chefId, REF_TYPE, "/employe/projets");
         }
     }
 
@@ -170,7 +161,8 @@ public class ProjectNotificationService {
 
     private void emit(Long recipientId, String email,
                       String type, String title, String content,
-                      Long projectId, Long triggeredBy, String refType) {
+                      Long projectId, Long triggeredBy, String refType,
+                      String actionUrl) {
         NotificationEvent event = NotificationEvent.builder()
                 .employeeId(recipientId)
                 .email(email)
@@ -179,7 +171,7 @@ public class ProjectNotificationService {
                 .content(content)
                 .referenceType(refType)
                 .referenceId(projectId != null ? projectId.toString() : null)
-                .actionUrl("/projets/" + projectId)
+                .actionUrl(actionUrl)
                 .triggeredBy(triggeredBy)
                 .sourceService(SOURCE)
                 .sendEmail(email != null)

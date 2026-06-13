@@ -47,7 +47,7 @@ public class AffectationController {
      * Retourne les projets du chef connecté (ou tous les projets pour RH/Admin).
      */
     @GetMapping("/projets")
-    @PreAuthorize("hasAnyRole('CHEF','RH','ADMIN')")
+    @PreAuthorize("hasAnyRole('CHEF','RH','ADMIN','ADMIN_RH')")
     public ResponseEntity<List<ProjetDTO>> getProjets(Authentication auth) {
         log.info("[Affectation] GET /projets | user={}", auth.getName());
 
@@ -70,7 +70,7 @@ public class AffectationController {
      * Angular : TacheService.getTaches() et getTachesByProjet(projetNom)
      */
     @GetMapping("/taches")
-    @PreAuthorize("hasAnyRole('CHEF','RH','ADMIN')")
+    @PreAuthorize("hasAnyRole('CHEF','RH','ADMIN','ADMIN_RH')")
     public ResponseEntity<List<TacheDTO>> getTaches(
             @RequestParam(required = false) String projet,
             Authentication auth) {
@@ -87,7 +87,7 @@ public class AffectationController {
      * { titre, priorite, assigneA, echeance, projet }
      */
     @PostMapping("/taches")
-    @PreAuthorize("hasAnyRole('CHEF','RH','ADMIN')")
+    @PreAuthorize("hasAnyRole('CHEF','RH','ADMIN','ADMIN_RH')")
     public ResponseEntity<TacheDTO> createTache(
             @Valid @RequestBody TacheRequest request,
             Authentication auth) {
@@ -102,7 +102,7 @@ public class AffectationController {
      * Angular : TacheService.updateTache(id, tache)
      */
     @PutMapping("/taches/{id}")
-    @PreAuthorize("hasAnyRole('CHEF','RH','ADMIN')")
+    @PreAuthorize("hasAnyRole('CHEF','RH','ADMIN','ADMIN_RH')")
     public ResponseEntity<TacheDTO> updateTache(
             @PathVariable Long id,
             @Valid @RequestBody TacheRequest request,
@@ -117,7 +117,7 @@ public class AffectationController {
      * Retourne 204 No Content — correspond au mock MSW.
      */
     @DeleteMapping("/taches/{id}")
-    @PreAuthorize("hasAnyRole('CHEF','RH','ADMIN')")
+    @PreAuthorize("hasAnyRole('CHEF','RH','ADMIN','ADMIN_RH')")
     public ResponseEntity<Void> deleteTache(
             @PathVariable Long id,
             Authentication auth) {

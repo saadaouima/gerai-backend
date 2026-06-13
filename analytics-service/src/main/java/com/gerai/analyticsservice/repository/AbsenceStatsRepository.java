@@ -9,7 +9,7 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 
 /**
- * Repository dédié à la table GERAI_USER.ABSENCE_STATS.
+ * Repository dédié à la table GERAI.ABSENCE_STATS.
  *
  * DDL Oracle (à exécuter si la table n'existe pas encore) :
  * ─────────────────────────────────────────────────────────
@@ -29,7 +29,7 @@ import java.util.Optional;
  * ─────────────────────────────────────────────────────────
  *
  * CORRECTIONS :
- *  - Toutes les requêtes natives utilisent le schéma complet GERAI_USER.ABSENCE_STATS
+ *  - Toutes les requêtes natives utilisent le schéma complet GERAI.ABSENCE_STATS
  *  - NVL() sur tous les agrégats pour garantir un retour non-null
  *  - sumJoursAbsenceParMois retourne Double (NUMBER(6,2) Oracle → Double Java)
  *  - countEmployesAbsentsParMois retourne Long (COUNT retourne NUMBER en Oracle)
@@ -43,7 +43,7 @@ public interface AbsenceStatsRepository extends JpaRepository<AbsenceStats, Long
      *   SELECT * FROM ABSENCE_STATS
      *   WHERE EMPLOYE_ID = ? AND ANNEE = ? AND MOIS = ?
      *
-     * IMPORTANT : la table physique s'appelle ABSENCE_STATS dans le schéma GERAI_USER.
+     * IMPORTANT : la table physique s'appelle ABSENCE_STATS dans le schéma GERAI.
      * Spring Data la trouve via @Table(name="ABSENCE_STATS") sur l'entité AbsenceStats.
      */
     Optional<AbsenceStats> findByEmployeIdAndAnneeAndMois(
@@ -59,7 +59,7 @@ public interface AbsenceStatsRepository extends JpaRepository<AbsenceStats, Long
                 ROUND(AVG(NB_JOURS_CONGE * 100.0 / 22.0), 2),
                 0
             )
-            FROM GERAI_USER.ABSENCE_STATS
+            FROM GERAI.ABSENCE_STATS
             WHERE ANNEE = :annee AND MOIS = :mois
             """, nativeQuery = true)
     Double avgTauxAbsenteisme(@Param("annee") int annee,
@@ -72,7 +72,7 @@ public interface AbsenceStatsRepository extends JpaRepository<AbsenceStats, Long
      */
     @Query(value = """
             SELECT NVL(SUM(NB_JOURS_CONGE), 0)
-            FROM GERAI_USER.ABSENCE_STATS
+            FROM GERAI.ABSENCE_STATS
             WHERE ANNEE = :annee AND MOIS = :mois
             """, nativeQuery = true)
     Double sumJoursAbsenceParMois(@Param("annee") int annee,
@@ -84,7 +84,7 @@ public interface AbsenceStatsRepository extends JpaRepository<AbsenceStats, Long
      */
     @Query(value = """
             SELECT COUNT(DISTINCT EMPLOYE_ID)
-            FROM GERAI_USER.ABSENCE_STATS
+            FROM GERAI.ABSENCE_STATS
             WHERE ANNEE = :annee
               AND MOIS  = :mois
               AND NB_JOURS_CONGE > 0

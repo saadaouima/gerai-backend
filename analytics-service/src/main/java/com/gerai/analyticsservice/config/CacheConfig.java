@@ -39,7 +39,9 @@ public class CacheConfig {
                 "conge-stats",
                 "formation-stats",
                 "par-mois",
-                "top-5-absences"
+                "top-5-absences",
+                "attrition-predictions",
+                "attrition-summary"
         ));
 
         manager.setCaffeine(

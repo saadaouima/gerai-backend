@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
               xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports
@@ -210,7 +210,7 @@
             <staticText>
                 <reportElement x="0" y="2" width="200" height="12" forecolor="#90A4AE"/>
                 <textElement><font fontName="SansSerif" size="7"/></textElement>
-                <text><![CDATA[GerAI – Fiche Signalétique Employé]]></text>
+                <text><![CDATA[SYNAPSE – Fiche Signalétique Employé]]></text>
             </staticText>
             <textField>
                 <reportElement x="200" y="2" width="196" height="12" forecolor="#90A4AE"/>
@@ -242,7 +242,7 @@
             <staticText>
                 <reportElement x="12" y="14" width="280" height="12" forecolor="#90CAF9"/>
                 <textElement><font fontName="SansSerif" size="8"/></textElement>
-                <text><![CDATA[Document généré automatiquement par le système GerAI]]></text>
+                <text><![CDATA[Document généré automatiquement par le système SYNAPSE]]></text>
             </staticText>
             <textField>
                 <reportElement x="12" y="30" width="280" height="12" forecolor="#64B5F6"/>
@@ -252,7 +252,7 @@
             <staticText>
                 <reportElement x="300" y="30" width="231" height="12" forecolor="#4DD0E1"/>
                 <textElement textAlignment="Right"><font fontName="SansSerif" size="7" isItalic="true"/></textElement>
-                <text><![CDATA[© GerAI – Document RH Confidentiel]]></text>
+                <text><![CDATA[© SYNAPSE – Document RH Confidentiel]]></text>
             </staticText>
         </band>
     </summary>

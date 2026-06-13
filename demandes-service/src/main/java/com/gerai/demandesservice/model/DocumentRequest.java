@@ -6,7 +6,7 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 /**
- * Entité mappée sur GERAI_USER.DOCUMENT_REQUESTS (11 colonnes).
+ * Entité mappée sur GERAI.DOCUMENT_REQUESTS (11 colonnes).
  *
  * Statuts valides (CHECK Oracle) :
  *   EN_ATTENTE | EN_COURS | PRET | LIVRE | REFUSE

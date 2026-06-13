@@ -2,6 +2,7 @@ package com.gerai.chat.controller;
 
 import com.gerai.chat.config.WebSocketAuthChannelInterceptor;
 import com.gerai.chat.dto.*;
+import com.gerai.chat.repository.ConversationParticipantRepository;
 import com.gerai.chat.service.ChatService;
 import com.gerai.chat.service.FileStorageService;
 import com.gerai.chat.service.KeycloakAdminService;
@@ -37,10 +38,11 @@ import java.util.Map;
 @CrossOrigin(origins = "${app.cors.allowed-origin:http://localhost:4200}")
 public class ChatController {
 
-    private final ChatService                  chatService;
-    private final SimpMessageSendingOperations messagingTemplate;
-    private final FileStorageService           fileStorageService;
-    private final KeycloakAdminService keycloakAdminService;
+    private final ChatService                       chatService;
+    private final SimpMessageSendingOperations      messagingTemplate;
+    private final FileStorageService                fileStorageService;
+    private final KeycloakAdminService              keycloakAdminService;
+    private final ConversationParticipantRepository partRepo;
     /* ── Conversations ────────────────────────────────── */
 
     @GetMapping("/conversations")
@@ -52,15 +54,24 @@ public class ChatController {
 
     /**
      * Crée ou récupère une conversation directe.
-     * Body : { "otherEmployeeId": 5 }
+     * Accepte deux formes :
+     *   - Body JSON : { "otherEmployeeId": 5 }
+     *   - Query params : ?user2Id={keycloakUUID} (utilisé par le composant Angular)
      */
     @PostMapping("/conversations")
     public ResponseEntity<ConversationDTO> creerOuRecupererConversation(
-            @RequestBody Map<String, Object> body,
+            @RequestBody(required = false) Map<String, Object> body,
+            @RequestParam(required = false) String user2Id,
             Principal principal) {
 
         Long emp1Id = extractEmployeeId(principal);
-        Long emp2Id = toLong(body.get("otherEmployeeId"));
+        Long emp2Id = null;
+
+        if (user2Id != null && !user2Id.isBlank()) {
+            emp2Id = keycloakAdminService.findEmployeeIdByKeycloakId(user2Id).orElse(null);
+        } else if (body != null) {
+            emp2Id = toLong(body.get("otherEmployeeId"));
+        }
 
         if (emp2Id == null) return ResponseEntity.badRequest().build();
 
@@ -178,6 +189,61 @@ public class ChatController {
         return ResponseEntity.ok(dto);
     }
 
+    /* ── Alias endpoints (chemins courts utilisés par Angular) ─── */
+
+    /**
+     * POST /api/chat/send — alias pour /conversations/{id}/messages.
+     * Body: { conversationId, content, type, attachmentUrl, replyToId }
+     */
+    @PostMapping("/send")
+    public ResponseEntity<MessageDTO> envoyerMessageAlias(
+            @RequestBody EnvoiMessageDTO envoi,
+            Principal principal) {
+
+        if (envoi.getConversationId() == null) return ResponseEntity.badRequest().build();
+        Long senderId = extractEmployeeId(principal);
+
+        MessageDTO dto = chatService.envoyerMessage(
+                envoi.getConversationId(), senderId, envoi.getContent(),
+                envoi.getType(), envoi.getAttachmentUrl(), envoi.getReplyToId());
+
+        broadcastToConversation(envoi.getConversationId(), dto, senderId);
+        return ResponseEntity.ok(dto);
+    }
+
+    /**
+     * POST /api/chat/upload — alias pour /conversations/{id}/upload.
+     * Form params: file, conversationId, destinataireId (ignoré).
+     */
+    @PostMapping(value = "/upload", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<MessageDTO> uploadFileAlias(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("conversationId") Long conversationId,
+            Principal principal) {
+
+        Long senderId = extractEmployeeId(principal);
+        String fileUrl = fileStorageService.storeFile(file);
+        String type = file.getContentType() != null
+                && file.getContentType().startsWith("image") ? "IMAGE" : "FICHIER";
+
+        MessageDTO dto = chatService.envoyerFichier(conversationId, senderId, fileUrl, type);
+        broadcastToConversation(conversationId, dto, senderId);
+        return ResponseEntity.ok(dto);
+    }
+
+    /**
+     * POST /api/chat/read/{conversationId} — alias pour /conversations/{id}/read.
+     */
+    @PostMapping("/read/{conversationId}")
+    public ResponseEntity<Void> marquerLuAlias(
+            @PathVariable Long conversationId,
+            Principal principal) {
+
+        Long empId = extractEmployeeId(principal);
+        chatService.getMessages(conversationId, empId);
+        return ResponseEntity.noContent().build();
+    }
+
     /* ── Helpers ──────────────────────────────────────── */
 
     /**
@@ -185,42 +251,53 @@ public class ChatController {
      * Utilise l'employee_id Oracle converti en String comme identifiant STOMP.
      */
     private void broadcastToConversation(Long conversationId, MessageDTO dto, Long senderEmpId) {
-        // Pour chaque participant connu via la DTO (ou requête dédiée)
-        // On envoie à tous — côté Angular, chaque client écoute /user/{employeeId}/queue/messages
-        // Le service détermine les participants de la conversation
-        messagingTemplate.convertAndSend(
-                "/topic/conversation/" + conversationId,
-                dto);
+        // Topic broadcast: for users actively viewing this conversation
+        messagingTemplate.convertAndSend("/topic/conversation/" + conversationId, dto);
+
+        // Personal queue: delivers to every participant regardless of active conversation
+        partRepo.findByConversation_ConversationId(conversationId).forEach(p ->
+            messagingTemplate.convertAndSendToUser(
+                p.getEmployeeId().toString(),
+                "/queue/messages",
+                dto));
     }
 
     /**
-     * Extrait l'employee_id Oracle depuis le claim JWT "employee_id".
-     * Si absent (ancien token), effectue une recherche de secours via Keycloak Admin.
+     * Extrait l'employee_id Oracle depuis le JWT.
+     * Ordre de priorité :
+     *  1. Claim "employee_id" dans le JWT
+     *  2. Colonne USER_ID dans EMPLOYEES (Keycloak sub UUID)
+     *  3. Colonne EMAIL dans EMPLOYEES
      */
     private Long extractEmployeeId(Principal principal) {
         if (principal instanceof JwtAuthenticationToken jwtToken) {
             Jwt jwt = jwtToken.getToken();
+
+            // 1. Claim explicite
             Object val = jwt.getClaim("employee_id");
-
-            // 1. Chemin normal : l'ID est dans le JWT
-            if (val != null) {
-                if (val instanceof Number n) return n.longValue();
-                if (val instanceof String s) {
-                    try { return Long.parseLong(s); } catch (NumberFormatException ignored) {}
-                }
+            if (val instanceof Number n) return n.longValue();
+            if (val instanceof String s) {
+                try { return Long.parseLong(s); } catch (NumberFormatException ignored) {}
             }
 
-            // 2. Chemin de secours : ID absent (Ancien token)
+            // 2. Lookup par Keycloak sub UUID (colonne USER_ID)
+            String sub = jwt.getSubject();
+            if (sub != null) {
+                Optional<Long> byKcId = keycloakAdminService.findEmployeeIdByKeycloakId(sub);
+                if (byKcId.isPresent()) return byKcId.get();
+            }
+
+            // 3. Lookup par email
             String email = jwt.getClaim("email");
-            log.info("[Chat] employee_id manquant dans le JWT pour {}. Tentative de récupération via Keycloak...", email);
-
             if (email != null) {
-                // Appel au service Keycloak pour chercher l'attribut en base Keycloak
-                return keycloakAdminService.findEmployeeIdByEmail(email)
-                        .orElseThrow(() -> new RuntimeException("ID Oracle introuvable pour l'utilisateur : " + email));
+                Optional<Long> byEmail = keycloakAdminService.findEmployeeIdByEmail(email);
+                if (byEmail.isPresent()) return byEmail.get();
             }
+
+            throw new RuntimeException(
+                    "ID Oracle introuvable pour sub=" + sub + " email=" + email);
         }
-        throw new RuntimeException("Impossible d'identifier l'employé (Principal non valide ou email manquant)");
+        throw new RuntimeException("Principal JWT invalide ou manquant");
     }
 
     /**

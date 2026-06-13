@@ -8,6 +8,10 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import java.util.List;
 
 @Configuration
 @EnableWebSecurity
@@ -27,6 +31,7 @@ public class SecurityConfig {
 
         http
                 .csrf(csrf -> csrf.disable())
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
@@ -46,17 +51,23 @@ public class SecurityConfig {
                          * dans les GrantedAuthority. KeycloakJwtRoleConverter préfixe
                          * automatiquement "ROLE_" → cohérent.
                          */
-                        .requestMatchers(HttpMethod.GET,    "/employees/**")
-                        .hasAnyRole("admin", "RH","chef", "CHEF", "employees:read")
+                        .requestMatchers(HttpMethod.GET, "/employe/profil/photo/**")
+                        .permitAll()
 
-                        .requestMatchers(HttpMethod.POST,   "/employees/**")
-                        .hasAnyRole("admin", "RH", "employees:write")
+                        .requestMatchers(HttpMethod.GET,    "/employees/**", "/employes/**")
+                        .hasAnyRole("admin", "RH", "chef", "CHEF", "ADMIN", "ADMIN_RH", "EMPLOYE", "employe", "employees:read")
 
-                        .requestMatchers(HttpMethod.PUT,    "/employees/**")
-                        .hasAnyRole("admin", "RH", "employees:update")
+                        .requestMatchers(HttpMethod.POST,   "/employees/**", "/employes/**")
+                        .hasAnyRole("admin", "RH", "ADMIN", "ADMIN_RH", "employees:write")
 
-                        .requestMatchers(HttpMethod.DELETE, "/employees/**")
-                        .hasAnyRole("admin", "RH", "employees:delete")
+                        .requestMatchers(HttpMethod.PUT,    "/employees/**", "/employes/**")
+                        .hasAnyRole("admin", "RH", "ADMIN", "ADMIN_RH", "employees:update")
+
+                        .requestMatchers(HttpMethod.DELETE, "/employees/**", "/employes/**")
+                        .hasAnyRole("admin", "RH", "ADMIN", "ADMIN_RH", "employees:delete")
+
+                        .requestMatchers("/admin/keycloak/**")
+                        .hasAnyRole("admin", "ADMIN", "admin_rh", "ADMIN_RH")
 
                         .anyRequest().authenticated()
                 )
@@ -65,5 +76,17 @@ public class SecurityConfig {
                 );
 
         return http.build();
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration cfg = new CorsConfiguration();
+        cfg.setAllowedOrigins(List.of("http://localhost:4200"));
+        cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        cfg.setAllowedHeaders(List.of("*"));
+        cfg.setAllowCredentials(true);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", cfg);
+        return source;
     }
 }

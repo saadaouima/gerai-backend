@@ -24,7 +24,7 @@ public class PerformanceEval {
     @Column(name = "PERIOD_YEAR", nullable = false)
     private Integer periodYear;
 
-    @Column(name = "PERIOD_QUARTER", length = 5)
+    @Column(name = "PERIOD_QUARTER", length = 6)
     private String periodQuarter;
 
     @Column(name = "SCORE")

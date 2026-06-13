@@ -66,4 +66,7 @@ public class NotificationEvent {
     private String sourceService;
 
     private Boolean sendEmail;
+
+    /** Rôle destinataire pour broadcast (ADMIN, CHEF, EMPLOYE). Utilisé quand employeeId est null. */
+    private String role;
 }

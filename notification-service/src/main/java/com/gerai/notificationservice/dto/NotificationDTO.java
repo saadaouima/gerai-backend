@@ -18,6 +18,7 @@ public class NotificationDTO {
 
     private Long   notificationId;
     private Long   employeeId;
+    private String role;
 
     private TypeNotification type;
 

@@ -51,6 +51,13 @@ public class ReportService {
                 statsService.getFormationsForReport(deptId, auth));
     }
 
+    /* ── Projets ─────────────────────────────────────── */
+
+    public byte[] generateProjetsPdf(Long deptId, Authentication auth) throws JRException {
+        return pdf("reports/projets_report.jrxml", buildProjetsParams(deptId, auth),
+                statsService.getProjetsForReport(deptId, auth));
+    }
+
     /* ── Fiche employé ───────────────────────────────── */
 
     /**
@@ -164,7 +171,12 @@ public class ReportService {
             if (data != null) {
                 for (Map<String, Object> row : data) {
                     Map<String, Object> up = new LinkedHashMap<>();
-                    row.forEach((k, v) -> up.put(k.toUpperCase(), v != null ? v : ""));
+                    row.forEach((k, v) -> {
+                        Object val = v;
+                        if (v instanceof Long l)    val = java.math.BigDecimal.valueOf(l);
+                        else if (v instanceof Integer i) val = java.math.BigDecimal.valueOf(i);
+                        up.put(k.toUpperCase(), val);
+                    });
                     normalized.add(up);
                 }
             }
@@ -204,6 +216,18 @@ public class ReportService {
         p.put("FORMATIONS_VALIDEES", s.getFormationsValidees());
         p.put("BUDGET_TOTAL",        s.getBudgetTotal());
         p.put("MOYENNE_DUREE",       s.getMoyenneDureeJours());
+        return p;
+    }
+
+    private Map<String, Object> buildProjetsParams(Long deptId, Authentication auth) {
+        Map<String, Object> p = base("Rapport des Projets");
+        List<Map<String, Object>> rows = statsService.getProjetsForReport(deptId, auth);
+        long total    = rows.size();
+        long enCours  = rows.stream().filter(r -> "EN_COURS".equals(r.get("STATUT"))).count();
+        long termines = rows.stream().filter(r -> "TERMINE".equals(r.get("STATUT"))).count();
+        p.put("TOTAL_PROJETS",    total);
+        p.put("PROJETS_EN_COURS", enCours);
+        p.put("PROJETS_TERMINES", termines);
         return p;
     }
 }

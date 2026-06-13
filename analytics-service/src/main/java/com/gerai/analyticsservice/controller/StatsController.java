@@ -37,7 +37,7 @@ public class StatsController {
      * MARIEM / AMAL (CHEF) → dashboard filtré sur leur département.
      */
     @GetMapping("/dashboard")
-    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN')")
+    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN','ADMIN_RH')")
     public ResponseEntity<DashboardSummaryDTO> getDashboard(Authentication auth) {
         return ResponseEntity.ok(statsService.getDashboard(auth));
     }
@@ -45,7 +45,7 @@ public class StatsController {
     /* ── Congés ───────────────────────────────────────── */
 
     @GetMapping("/conges")
-    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN')")
+    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN','ADMIN_RH')")
     public ResponseEntity<CongeStatsDTO> getCongeStats() {
         return ResponseEntity.ok(statsService.getCongeStats());
     }
@@ -53,7 +53,7 @@ public class StatsController {
     /* ── Formations ───────────────────────────────────── */
 
     @GetMapping("/formations")
-    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN')")
+    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN','ADMIN_RH')")
     public ResponseEntity<FormationStatsDTO> getFormationStats() {
         return ResponseEntity.ok(statsService.getFormationStats());
     }
@@ -61,7 +61,7 @@ public class StatsController {
     /* ── Par mois + type ──────────────────────────────── */
 
     @GetMapping("/par-mois")
-    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN')")
+    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN','ADMIN_RH')")
     public ResponseEntity<List<Map<String, Object>>> getParMois() {
         return ResponseEntity.ok(statsService.getDemandesParMoisEtType());
     }
@@ -73,7 +73,7 @@ public class StatsController {
      * RH / CHEF peuvent consulter n'importe quel employé.
      */
     @GetMapping("/employe/{employeId}")
-    @PreAuthorize("hasAnyRole('RH','CHEF','EMPLOYE','ADMIN')")
+    @PreAuthorize("hasAnyRole('RH','CHEF','EMPLOYE','ADMIN','ADMIN_RH')")
     public ResponseEntity<List<Map<String, Object>>> getDemandesEmploye(
             @PathVariable Long employeId) {
         return ResponseEntity.ok(statsService.getDemandesEmploye(employeId));
@@ -82,7 +82,7 @@ public class StatsController {
     /* ── Stats par département (RH uniquement) ────────── */
 
     @GetMapping("/par-departement")
-    @PreAuthorize("hasAnyRole('RH','ADMIN')")
+    @PreAuthorize("hasAnyRole('RH','ADMIN','ADMIN_RH')")
     public ResponseEntity<List<Map<String, Object>>> getParDepartement() {
         return ResponseEntity.ok(statsService.getStatsParDepartement());
     }
@@ -94,7 +94,7 @@ public class StatsController {
      * CHEF → top 5 de son département (résolution automatique dans StatsService).
      */
     @GetMapping("/top-absences")
-    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN')")
+    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN','ADMIN_RH')")
     public ResponseEntity<List<Map<String, Object>>> getTopAbsences(Authentication auth) {
         return ResponseEntity.ok(statsService.getTop5EmployesAbsences(auth));
     }
@@ -106,7 +106,7 @@ public class StatsController {
      * Utile pour le RH qui veut filtrer sur un département précis.
      */
     @GetMapping("/report/conges")
-    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN')")
+    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN','ADMIN_RH')")
     public ResponseEntity<List<Map<String, Object>>> exportConges(
             Authentication auth,
             @RequestParam(required = false) Long deptId) {
@@ -114,7 +114,7 @@ public class StatsController {
     }
 
     @GetMapping("/report/formations")
-    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN')")
+    @PreAuthorize("hasAnyRole('RH','CHEF','ADMIN','ADMIN_RH')")
     public ResponseEntity<List<Map<String, Object>>> exportFormations(
             Authentication auth,
             @RequestParam(required = false) Long deptId) {

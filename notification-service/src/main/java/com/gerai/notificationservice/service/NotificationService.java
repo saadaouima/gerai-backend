@@ -4,6 +4,7 @@ import com.gerai.notificationservice.dto.CreateNotificationRequest;
 import com.gerai.notificationservice.dto.NotificationDTO;
 import com.gerai.notificationservice.entity.Notification;
 import com.gerai.notificationservice.event.NotificationEvent;
+import com.gerai.notificationservice.enums.TypeNotification;
 import com.gerai.notificationservice.mapper.NotificationMapper;
 import com.gerai.notificationservice.repository.NotificationRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -107,6 +108,40 @@ public class NotificationService {
         }
     }
     /* ═══════════════════════════════════════
+       BROADCAST — PERSISTANCE
+       ═══════════════════════════════════════ */
+
+    @Transactional
+    public Notification saveBroadcastNotification(NotificationEvent event) {
+        TypeNotification typeEnum;
+        try { typeEnum = TypeNotification.valueOf(event.getType()); }
+        catch (Exception e) { typeEnum = TypeNotification.INFO; }
+
+        Long refId = null;
+        if (event.getReferenceId() != null) {
+            String numeric = event.getReferenceId().replaceAll("[^0-9]", "");
+            if (!numeric.isEmpty()) {
+                try { refId = Long.parseLong(numeric.length() > 18 ? numeric.substring(0, 18) : numeric); }
+                catch (NumberFormatException ignored) {}
+            }
+        }
+
+        Notification notif = Notification.builder()
+                .role(event.getRole())
+                .type(typeEnum)
+                .title(event.getTitle())
+                .content(event.getContent())
+                .referenceType(event.getReferenceType())
+                .referenceId(refId)
+                .actionUrl(event.getActionUrl())
+                .isRead(false)
+                .build();
+        Notification saved = notificationRepository.saveAndFlush(notif);
+        log.info("[NotificationService] Broadcast sauvegardé | role={} | id={}", event.getRole(), saved.getNotificationId());
+        return saved;
+    }
+
+    /* ═══════════════════════════════════════
        LECTURE
        ═══════════════════════════════════════ */
 
@@ -114,6 +149,15 @@ public class NotificationService {
     public List<NotificationDTO> getNotificationsByEmployee(Long employeeId) {
         return notificationRepository
                 .findByEmployeeIdOrderByCreatedAtDesc(employeeId)
+                .stream()
+                .map(notificationMapper::toDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<NotificationDTO> getNotificationsByEmployeeAndRole(Long employeeId, String role) {
+        return notificationRepository
+                .findByEmployeeOrRole(employeeId, role)
                 .stream()
                 .map(notificationMapper::toDTO)
                 .collect(Collectors.toList());
@@ -155,8 +199,13 @@ public class NotificationService {
        ═══════════════════════════════════════ */
 
     @Transactional
-    public int markAllAsRead(Long employeeId) {
-        return notificationRepository.markAllAsReadByEmployee(employeeId, LocalDateTime.now());
+    public int markAllAsRead(Long employeeId, String role) {
+        return notificationRepository.markAllAsReadByEmployeeOrRole(employeeId, role, LocalDateTime.now());
+    }
+
+    @Transactional
+    public void deleteById(Long id) {
+        notificationRepository.deleteById(id);
     }
 
     @Transactional

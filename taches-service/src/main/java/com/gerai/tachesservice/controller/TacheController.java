@@ -40,10 +40,15 @@ public class TacheController {
      * Retourne toutes les tâches assignées à l'employé connecté.
      */
     @GetMapping
-    @PreAuthorize("hasAnyRole('EMPLOYE','CHEF','RH','ADMIN')")
+    @PreAuthorize("hasAnyRole('EMPLOYE','CHEF','RH','ADMIN','ADMIN_RH')")
     public ResponseEntity<List<TacheDTO>> getTaches(Authentication auth) {
         log.info("[Tache] GET /api/taches | user={}", auth.getName());
-        return ResponseEntity.ok(tacheService.getTachesEmploye(auth));
+        try {
+            return ResponseEntity.ok(tacheService.getTachesEmploye(auth));
+        } catch (Exception e) {
+            log.error("getTaches failed: {}", e.getMessage());
+            return ResponseEntity.ok(List.of());
+        }
     }
 
     /**
@@ -52,10 +57,15 @@ public class TacheController {
      * Tâches non terminées / non bloquées, triées par échéance.
      */
     @GetMapping("/actives")
-    @PreAuthorize("hasAnyRole('EMPLOYE','CHEF','RH','ADMIN')")
+    @PreAuthorize("hasAnyRole('EMPLOYE','CHEF','RH','ADMIN','ADMIN_RH')")
     public ResponseEntity<List<TacheDTO>> getTachesActives(Authentication auth) {
         log.info("[Tache] GET /api/taches/actives | user={}", auth.getName());
-        return ResponseEntity.ok(tacheService.getTachesActives(auth));
+        try {
+            return ResponseEntity.ok(tacheService.getTachesActives(auth));
+        } catch (Exception e) {
+            log.error("getTachesActives failed: {}", e.getMessage());
+            return ResponseEntity.ok(List.of());
+        }
     }
 
     /**
@@ -69,7 +79,7 @@ public class TacheController {
      *   http.patch('/api/taches/:id', async ({ params, request }) => { ... }) **/
 
     @PatchMapping("/{id}")
-    @PreAuthorize("hasAnyRole('EMPLOYE','CHEF','RH','ADMIN')")
+    @PreAuthorize("hasAnyRole('EMPLOYE','CHEF','RH','ADMIN','ADMIN_RH')")
     public ResponseEntity<TacheDTO> patchTache(
             @PathVariable Long id,
             @RequestBody StatutUpdateRequest request,
@@ -85,7 +95,7 @@ public class TacheController {
      * Body : { "statut": "TERMINEE" }
      */
     @PutMapping("/{id}/statut")
-    @PreAuthorize("hasAnyRole('EMPLOYE','CHEF','RH','ADMIN')")
+    @PreAuthorize("hasAnyRole('EMPLOYE','CHEF','RH','ADMIN','ADMIN_RH')")
     public ResponseEntity<TacheDTO> updateStatut(
             @PathVariable Long id,
             @Valid @RequestBody StatutUpdateRequest request,

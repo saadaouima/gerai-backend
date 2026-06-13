@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -40,6 +41,7 @@ import java.util.List;
 public class NotificationController {
 
     private final NotificationService notificationService;
+    private final JdbcTemplate        jdbcTemplate;
 
     /* ── Mes notifications ───────────────────────── */
 
@@ -47,7 +49,8 @@ public class NotificationController {
     public ResponseEntity<List<NotificationDTO>> getMyNotifications(Authentication auth) {
         Long employeeId = extractEmployeeId(auth);
         if (employeeId == null) return ResponseEntity.ok(List.of());
-        return ResponseEntity.ok(notificationService.getNotificationsByEmployee(employeeId));
+        String role = extractRole(auth);
+        return ResponseEntity.ok(notificationService.getNotificationsByEmployeeAndRole(employeeId, role));
     }
 
     @GetMapping("/unread")
@@ -70,16 +73,24 @@ public class NotificationController {
     public ResponseEntity<Integer> markAllAsRead(Authentication auth) {
         Long employeeId = extractEmployeeId(auth);
         if (employeeId == null) return ResponseEntity.ok(0);
-        int updated = notificationService.markAllAsRead(employeeId);
+        String role = extractRole(auth);
+        int updated = notificationService.markAllAsRead(employeeId, role);
         return ResponseEntity.ok(updated);
     }
 
     @PutMapping("/{id}/read")
+    @PatchMapping("/{id}/read")
     public ResponseEntity<NotificationDTO> markOneAsRead(@PathVariable Long id) {
         return ResponseEntity.ok(notificationService.markAsRead(id));
     }
 
     /* ── Supprimer mes notifications ─────────────── */
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteOne(@PathVariable Long id) {
+        notificationService.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
 
     @DeleteMapping
     public ResponseEntity<Void> deleteMyNotifications(Authentication auth) {
@@ -93,7 +104,7 @@ public class NotificationController {
     /* ── Création manuelle (RH / ADMIN) ──────────── */
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('RH','ADMIN')")
+    @PreAuthorize("hasAnyRole('RH','ADMIN','ADMIN_RH')")
     public ResponseEntity<NotificationDTO> create(
             @Valid @RequestBody CreateNotificationRequest request) {
         return ResponseEntity
@@ -101,30 +112,70 @@ public class NotificationController {
                 .body(notificationService.create(request));
     }
 
-    /* ── Helper JWT ──────────────────────────────── */
+    /* ── Helpers JWT ─────────────────────────────── */
 
     /**
-     * Extrait l'employee_id Oracle depuis le claim custom Keycloak.
-     *
-     * Pour configurer ce claim dans Keycloak :
-     *   Clients → notification-service → Client Scopes → Add mapper
-     *   → User Attribute : attribute name = employee_id,
-     *                      token claim name = employee_id,
-     *                      claim type = Long
-     *   Puis Users → [user] → Attributes → employee_id = [ID Oracle]
+     * Resolves the user's role (ADMIN / CHEF / EMPLOYE) from JWT realm_access.roles.
+     */
+    private String extractRole(Authentication auth) {
+        if (auth == null) return "EMPLOYE";
+        try {
+            if (auth.getPrincipal() instanceof Jwt jwt) {
+                Object realmAccess = jwt.getClaim("realm_access");
+                if (realmAccess instanceof java.util.Map<?, ?> map) {
+                    Object roles = map.get("roles");
+                    if (roles instanceof java.util.List<?> roleList) {
+                        for (Object r : roleList) {
+                            String rs = String.valueOf(r);
+                            if ("admin".equals(rs) || "admin_rh".equals(rs)) return "ADMIN";
+                        }
+                        for (Object r : roleList) {
+                            if ("chef".equals(String.valueOf(r))) return "CHEF";
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[NotificationController] Impossible d'extraire le rôle du JWT: {}", e.getMessage());
+        }
+        return "EMPLOYE";
+    }
+
+
+    /**
+     * Resolves the Oracle EMPLOYEE_ID for the authenticated user.
+     * 1. Reads the employee_id custom JWT claim (fast path).
+     * 2. Falls back to a DB lookup on EMPLOYEES.USER_ID = Keycloak sub
+     *    (works without a Keycloak mapper, same strategy as WebSocketConfig).
      */
     private Long extractEmployeeId(Authentication auth) {
         if (auth == null) return null;
         try {
             Object principal = auth.getPrincipal();
             if (principal instanceof Jwt jwt) {
+                // 1. JWT claim (preferred — set up a Keycloak mapper to avoid the DB hit)
                 Object val = jwt.getClaim("employee_id");
                 if (val instanceof Number n)  return n.longValue();
-                if (val instanceof String s)  return Long.parseLong(s.trim());
+                if (val instanceof String s && !s.isBlank()) return Long.parseLong(s.trim());
+
+                // 2. DB fallback using Keycloak sub → EMPLOYEES.USER_ID
+                String sub = jwt.getSubject();
+                if (sub != null && !sub.isBlank()) {
+                    try {
+                        Long oracleId = jdbcTemplate.queryForObject(
+                                "SELECT EMPLOYEE_ID FROM EMPLOYEES WHERE USER_ID = ?",
+                                Long.class, sub);
+                        if (oracleId != null) {
+                            log.debug("[NotificationController] DB resolved employee_id={} for sub={}", oracleId, sub);
+                            return oracleId;
+                        }
+                    } catch (Exception dbEx) {
+                        log.warn("[NotificationController] DB lookup failed for sub={}: {}", sub, dbEx.getMessage());
+                    }
+                }
             }
         } catch (Exception e) {
-            log.warn("[NotificationController] Impossible d'extraire employee_id du JWT : {}",
-                    e.getMessage());
+            log.warn("[NotificationController] Impossible d'extraire employee_id du JWT : {}", e.getMessage());
         }
         return null;
     }

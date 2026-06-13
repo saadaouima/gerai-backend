@@ -2,7 +2,10 @@ package com.gerai_backend.gerai.repositories;
 
 import com.gerai_backend.gerai.models.Employee;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -23,4 +26,14 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
 
     /** Vérification unicité du matricule avant insertion */
     boolean existsByEmployeeCode(String employeeCode);
+
+    /** Membres d'une équipe managée par un responsable */
+    List<Employee> findByManagerId(Long managerId);
+
+    /** Recherche par nom, prénom ou email (insensible à la casse) */
+    @Query("SELECT e FROM Employee e WHERE " +
+           "LOWER(e.firstName) LIKE LOWER(CONCAT('%', :q, '%')) OR " +
+           "LOWER(e.lastName)  LIKE LOWER(CONCAT('%', :q, '%')) OR " +
+           "LOWER(e.email)     LIKE LOWER(CONCAT('%', :q, '%'))")
+    List<Employee> searchByQuery(@Param("q") String q);
 }

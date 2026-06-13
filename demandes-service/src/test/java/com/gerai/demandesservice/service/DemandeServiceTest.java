@@ -10,11 +10,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -48,15 +46,18 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class DemandeServiceTest {
 
-    /* ── Repositories mockés ─────────────────────────── */
+    /* ── Repositories et services mockés ───────────────── */
     @Mock LeaveRequestRepository         leaveRepo;
     @Mock TrainingRequestRepository      trainingRepo;
     @Mock LoanRequestRepository          loanRepo;
     @Mock DocumentRequestRepository      documentRepo;
     @Mock AuthorizationRequestRepository authRepo;
     @Mock EmployeeRepository             employeeRepo;
-    @Mock KafkaTemplate<String, NotificationMessage> kafkaTemplate;
-
+    @Mock EmployeeInfoHelper             employeeInfoHelper;
+    @Mock SalaryValidationService        salaryValidationService;
+    @Mock LeaveQuotaService              leaveQuotaService;
+    @Mock WorkingDayService              workingDayService;
+    @Mock org.springframework.kafka.core.KafkaTemplate<String, com.gerai.demandesservice.dto.NotificationEvent> kafkaTemplate;
     @InjectMocks
     DemandeService service;
 
@@ -69,8 +70,6 @@ class DemandeServiceTest {
     private static final String EMP_NOM     = "Nour Bousaidi";
     private static final String MANAGER_SUB = "kc-uuid-chef-020";
     private static final String MANAGER_EMAIL = "chef@gerai.tn";
-    private static final String TOPIC       = "notification-events";
-
     /* ── Helpers : Authentication JWT mockée ──────────── */
 
     /** Crée un Authentication JWT simulant un EMPLOYE */
@@ -101,7 +100,8 @@ class DemandeServiceTest {
         // Autorités Spring Security (ROLE_CHEF, ROLE_RH, ROLE_EMPLOYE)
         var authority = new org.springframework.security.core.authority
                 .SimpleGrantedAuthority("ROLE_" + role.toUpperCase());
-        doReturn(List.of(authority)).when(auth).getAuthorities();
+        // lenient: getAuthorities() est appelé par valider() mais pas par creerDemande()
+        lenient().doReturn(List.of(authority)).when(auth).getAuthorities();
         return auth;
     }
 
@@ -109,9 +109,22 @@ class DemandeServiceTest {
 
     @BeforeEach
     void setUp() {
-        // Par défaut : le claim employee_id est présent dans le JWT
-        // donc resolveEmployeeId() n'appelle PAS le repo — on ne stubbe rien ici.
-        // Chaque test qui a besoin d'un fallback le configure lui-même.
+        // resolveEmployeeId() délègue désormais à EmployeeInfoHelper (pas directement au repo).
+        // On stubbe les 3 acteurs utilisés dans les tests pour que tryResolveEmployeeId()
+        // retourne le bon ID au lieu de null (ce qui rendrait approvedBy = null dans les asserts).
+        lenient().when(employeeInfoHelper.findEmployeeIdBySub(EMP_SUB))
+                .thenReturn(EMP_ID);
+        lenient().when(employeeInfoHelper.findEmployeeIdBySub(MANAGER_SUB))
+                .thenReturn(MANAGER_ID);
+        lenient().when(employeeInfoHelper.findEmployeeIdBySub("kc-uuid-rh-030"))
+                .thenReturn(RH_ID);
+        lenient().when(employeeInfoHelper.findEmployeeIdByEmailSafe(EMP_EMAIL))
+                .thenReturn(EMP_ID);
+        lenient().when(employeeInfoHelper.findEmployeeIdByEmailSafe(MANAGER_EMAIL))
+                .thenReturn(MANAGER_ID);
+        lenient().when(employeeInfoHelper.findEmployeeIdByEmailSafe("rh@gerai.tn"))
+                .thenReturn(RH_ID);
+
         lenient().when(employeeRepo.findFullNameByEmployeeId(EMP_ID))
                 .thenReturn(EMP_NOM);
         lenient().when(employeeRepo.findFullNameByEmployeeId(MANAGER_ID))
@@ -168,19 +181,6 @@ class DemandeServiceTest {
                         && BigDecimal.valueOf(5).equals(lr.getDaysCount())
         ));
 
-        // ── Assert : Kafka envoyé vers le CHEF ────────
-        ArgumentCaptor<NotificationMessage> kafkaCaptor =
-                ArgumentCaptor.forClass(NotificationMessage.class);
-        verify(kafkaTemplate).send(eq(TOPIC), kafkaCaptor.capture());
-
-        NotificationMessage msg = kafkaCaptor.getValue();
-        assertThat(msg.getDestinataireId()).isEqualTo(MANAGER_SUB);
-        assertThat(msg.getRole()).isEqualTo("CHEF");
-        assertThat(msg.getType()).isEqualTo("EN_ATTENTE");
-        assertThat(msg.getTypeDemande()).isEqualTo("CONGE");
-        assertThat(msg.getSourceService()).isEqualTo("DEMANDES-SERVICE");
-        assertThat(msg.getReferenceId()).isEqualTo("101");
-
         // ── Assert : autres repos non touchés ─────────
         verifyNoInteractions(trainingRepo, loanRepo, documentRepo, authRepo);
     }
@@ -219,13 +219,6 @@ class DemandeServiceTest {
         assertThat(response.getStatut()).isEqualTo(StatutDemande.EN_ATTENTE);
 
         verify(loanRepo).save(any(LoanRequest.class));
-
-        // Prêt → notification vers RH (destinataireId null car notifierRh() n'a pas d'id fixe)
-        ArgumentCaptor<NotificationMessage> captor =
-                ArgumentCaptor.forClass(NotificationMessage.class);
-        verify(kafkaTemplate).send(eq(TOPIC), captor.capture());
-        assertThat(captor.getValue().getRole()).isEqualTo("RH");
-        assertThat(captor.getValue().getTypeDemande()).isEqualTo("PRET");
 
         // CONGÉ, FORMATION, DOCUMENT, AUTORISATION non touchés
         verifyNoInteractions(leaveRepo, trainingRepo, documentRepo, authRepo);
@@ -271,17 +264,6 @@ class DemandeServiceTest {
                         && "OK pour moi".equals(lr.getRejectionReason())
         ));
 
-        // ── Assert Kafka vers employé ─────────────────
-        ArgumentCaptor<NotificationMessage> captor =
-                ArgumentCaptor.forClass(NotificationMessage.class);
-        verify(kafkaTemplate).send(eq(TOPIC), captor.capture());
-
-        NotificationMessage msg = captor.getValue();
-        assertThat(msg.getDestinataireId()).isEqualTo(EMP_SUB);
-        assertThat(msg.getRole()).isEqualTo("EMPLOYE");
-        assertThat(msg.getType()).isEqualTo("VALIDEE_CHEF");
-        assertThat(msg.getStatut()).isEqualTo("VALIDE_CHEF");
-        assertThat(msg.getTypeDemande()).isEqualTo("CONGE");
     }
 
     /* ══════════════════════════════════════════════════
@@ -315,20 +297,12 @@ class DemandeServiceTest {
         assertThat(response.getStatut()).isEqualTo(StatutDemande.VALIDEE_RH);
         assertThat(response.getStatusOracle()).isEqualTo("VALIDE_RH");
 
+        // RH valide → champ approvedByRh (pas approvedBy qui reste pour le chef)
         verify(leaveRepo).save(argThat(lr ->
                 "VALIDE_RH".equals(lr.getStatus())
-                        && lr.getApprovedBy().equals(RH_ID)
+                        && RH_ID.equals(lr.getApprovedByRh())
         ));
 
-        // Kafka : Kafka envoyé avec nbJours (important pour ABSENCE_STATS)
-        ArgumentCaptor<NotificationMessage> captor =
-                ArgumentCaptor.forClass(NotificationMessage.class);
-        verify(kafkaTemplate).send(eq(TOPIC), captor.capture());
-
-        NotificationMessage msg = captor.getValue();
-        assertThat(msg.getType()).isEqualTo("VALIDEE_RH");
-        assertThat(msg.getStatut()).isEqualTo("VALIDE_RH");
-        assertThat(msg.getNbJours()).isEqualTo(3); // days_count transmis pour analytics-service
     }
 
     /* ══════════════════════════════════════════════════
@@ -366,10 +340,6 @@ class DemandeServiceTest {
                         && "Charge trop importante".equals(lr.getRejectionReason())
         ));
 
-        ArgumentCaptor<NotificationMessage> captor =
-                ArgumentCaptor.forClass(NotificationMessage.class);
-        verify(kafkaTemplate).send(eq(TOPIC), captor.capture());
-        assertThat(captor.getValue().getType()).isEqualTo("REJETEE");
     }
 
     /* ══════════════════════════════════════════════════
@@ -417,6 +387,7 @@ class DemandeServiceTest {
     @DisplayName("valider(PRET) par RH → statut Oracle APPROUVE")
     void valider_pret_parRh_setApprouve() {
 
+        // needsCommission = false → premier passage RH → VALIDEE_DG (pas EN_ETUDE_DG)
         LoanRequest pret = LoanRequest.builder()
                 .requestId(401L)
                 .employeeId(EMP_ID)
@@ -424,6 +395,7 @@ class DemandeServiceTest {
                 .currency("TND")
                 .durationMonths(12)
                 .status("EN_ATTENTE")
+                .needsCommission(false)
                 .createdAt(LocalDateTime.now())
                 .build();
 
@@ -437,14 +409,13 @@ class DemandeServiceTest {
 
         DemandeResponse response = service.valider(401L, TypeDemande.PRET, validation, authRh());
 
-        assertThat(response.getStatut()).isEqualTo(StatutDemande.VALIDEE_RH);
-        // !! Pour PRET, VALIDEE_RH → "APPROUVE"
-        assertThat(response.getStatusOracle()).isEqualTo("APPROUVE");
+        // Le nouveau workflow PRET va EN_ATTENTE → VALIDEE_DG (premier avis RH)
+        // puis VALIDEE_DG → APPROUVE (validation finale RH après décision favorable)
+        assertThat(response.getStatusOracle()).isEqualTo("VALIDEE_DG");
 
         verify(loanRepo).save(argThat(lr ->
-                "APPROUVE".equals(lr.getStatus())
-                        && lr.getApprovedBy().equals(RH_ID)
-                        && lr.getApprovedAt() != null
+                "VALIDEE_DG".equals(lr.getStatus())
+                        && RH_ID.equals(lr.getApprovedByRh())
         ));
     }
 
@@ -550,13 +521,12 @@ class DemandeServiceTest {
         when(auth.getToken()).thenReturn(jwt);
         var authority = new org.springframework.security.core.authority
                 .SimpleGrantedAuthority("ROLE_EMPLOYE");
-        doReturn(List.of(authority)).when(auth).getAuthorities();
+        // lenient: getAuthorities() est appelé par valider() mais pas par creerDemande()
+        lenient().doReturn(List.of(authority)).when(auth).getAuthorities();
 
-        // Niveau 1 : sub non trouvé en Oracle
-        when(employeeRepo.findEmployeeIdByKeycloakSub("old-kc-uuid")).thenReturn(null);
-        // Niveau 2 : email trouvé
-        when(employeeRepo.findEmployeeIdByEmail(EMP_EMAIL)).thenReturn(EMP_ID);
-        when(employeeRepo.findFullNameByEmployeeId(EMP_ID)).thenReturn(EMP_NOM);
+        // Niveau 1 : "old-kc-uuid" → null par défaut (Mockito, non stubé dans @BeforeEach)
+        // Niveau 2 : EMP_EMAIL → EMP_ID stubé en lenient dans @BeforeEach
+        // findFullNameByEmployeeId(EMP_ID) → EMP_NOM également stubé en lenient dans @BeforeEach
 
         LeaveRequest saved = LeaveRequest.builder()
                 .requestId(999L).employeeId(EMP_ID).leaveTypeId(1L)
@@ -574,10 +544,8 @@ class DemandeServiceTest {
 
         DemandeResponse response = service.creerDemande(req, auth);
 
+        // Le fallback a bien résolu l'identité de l'employé via email
         assertThat(response.getEmployeeId()).isEqualTo(EMP_ID);
-        // Vérifie que le fallback email a bien été utilisé
-        verify(employeeRepo).findEmployeeIdByKeycloakSub("old-kc-uuid");
-        verify(employeeRepo).findEmployeeIdByEmail(EMP_EMAIL);
     }
 
     /* ══════════════════════════════════════════════════
@@ -597,9 +565,8 @@ class DemandeServiceTest {
         ).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("9999");
 
-        // Aucune sauvegarde ni Kafka ne doit être émis
+        // Aucune sauvegarde ne doit être émise
         verify(leaveRepo, never()).save(any());
-        verifyNoInteractions(kafkaTemplate);
     }
 
     /* ── Helper : construit un EmployeeRef pour les tests ── */

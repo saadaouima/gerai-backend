@@ -66,4 +66,11 @@ public class NotificationEvent {
 
     /** Nombre de jours (utile pour les stats ou rappels de congés) */
     private Integer nbJours;
+
+    /**
+     * Rôle destinataire pour la diffusion broadcast (ADMIN, CHEF, EMPLOYE).
+     * Utilisé quand employeeId est null — diffuse à tous les utilisateurs du rôle via WebSocket.
+     * La notification n'est PAS persistée en base dans ce cas.
+     */
+    private String role;
 }

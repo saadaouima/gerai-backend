@@ -21,6 +21,7 @@
 
     <properties>
         <java.version>21</java.version>
+        <lombok.version>1.18.42</lombok.version>
         <!--
             Spring Cloud 2024.0.x est compatible avec Spring Boot 3.5.x
             Source : https://spring.io/projects/spring-cloud#overview
@@ -86,17 +87,6 @@
         </dependency>
 
         <!-- ══════════════════════════════════════
-             KAFKA
-             CORRECTION : l'artifact correct est 'spring-kafka',
-             pas 'spring-boot-starter-kafka' qui n'existe pas.
-             La version est gérée automatiquement par le parent Spring Boot.
-             ══════════════════════════════════════ -->
-        <dependency>
-            <groupId>org.springframework.kafka</groupId>
-            <artifactId>spring-kafka</artifactId>
-        </dependency>
-
-        <!-- ══════════════════════════════════════
              OPENFEIGN (communication inter-services)
              ══════════════════════════════════════ -->
         <dependency>
@@ -131,8 +121,13 @@
 
         <dependency>
             <groupId>org.springframework.kafka</groupId>
-            <artifactId>spring-kafka-test</artifactId>
-            <scope>test</scope>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>me.paulschwarz</groupId>
+            <artifactId>spring-dotenv</artifactId>
+            <version>4.0.0</version>
         </dependency>
 
     </dependencies>
@@ -161,6 +156,7 @@
                         <path>
                             <groupId>org.projectlombok</groupId>
                             <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
                         </path>
                     </annotationProcessorPaths>
                 </configuration>

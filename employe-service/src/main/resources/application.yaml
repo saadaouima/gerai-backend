@@ -1,4 +1,9 @@
-spring:
+﻿spring:
+  config:
+    import: "optional:file:.env[dotenv]"
+  profiles:
+    active: dev
+
   application:
     name: grh-backend
 
@@ -6,21 +11,22 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${KC_ISSUER_URI}
+          issuer-uri: ${KC_ISSUER_URI:http://localhost:8080/realms/SYNAPSE}
+          jwk-set-uri: ${KC_JWK_URI:http://localhost:8080/realms/SYNAPSE/protocol/openid-connect/certs}
       client:
         registration:
           keycloak:
-            client-id: ${KC_CLIENT_ID}
+            client-id: ${KC_CLIENT_ID:synapse-backend}
             client-secret: ${KC_CLIENT_SECRET}
             scope:
               - openid
               - profile
               - email
             authorization-grant-type: authorization_code
-            redirect-uri: ${KC_REDIRECT_URI}
+            redirect-uri: ${KC_REDIRECT_URI:http://localhost:4200}
         provider:
           keycloak:
-            issuer-uri: ${KC_ISSUER_URI}
+            issuer-uri: ${KC_ISSUER_URI:http://localhost:8080/realms/SYNAPSE}
             user-name-attribute: preferred_username
 
   mail:
@@ -35,29 +41,60 @@ spring:
           starttls:
             enable: true
 
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+
   datasource:
-    url: ${DB_URL}
+    url: ${DB_URL:jdbc:oracle:thin:@localhost:1521/FREEPDB1}
     driver-class-name: oracle.jdbc.OracleDriver
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+    hikari:
+      connection-timeout: 5000
+      validation-timeout: 3000
+      initialization-fail-timeout: -1
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: none
     database-platform: org.hibernate.dialect.OracleDialect
     show-sql: true
     properties:
       hibernate:
         format_sql: true
 
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 20MB
+      max-request-size: 25MB
+
 keycloak:
-  server-url: ${KC_SERVER_URL}
+  server-url: ${KC_SERVER_URL:http://localhost:8080}
   realm: master
   admin-realm: master
   admin-client-id: admin-cli
   admin-username: ${KC_ADMIN_USERNAME}
   admin-password: ${KC_ADMIN_PASSWORD}
-  target-realm: ${KC_TARGET_REALM}
+  target-realm: ${KC_TARGET_REALM:SYNAPSE}
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        spring.json.add.type.headers: false
+
+app:
+  upload:
+    dir: ${FILE_UPLOAD_DIR:C:/gerai/uploads/employe}
+  kafka:
+    topic:
+      notifications: ${KAFKA_TOPIC_NOTIFICATIONS:notification-events}
 
 server:
   port: 8081

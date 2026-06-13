@@ -8,7 +8,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * Entité mappée sur GERAI_USER.TASKS (15 colonnes — V2__projects_tasks.sql).
+ * Entité mappée sur GERAI.TASKS (15 colonnes — V2__projects_tasks.sql).
  *
  * Priorités (CHECK) : FAIBLE | NORMALE | HAUTE | CRITIQUE
  * Statuts   (CHECK) : A_FAIRE | EN_COURS | EN_REVUE | TERMINE | BLOQUE

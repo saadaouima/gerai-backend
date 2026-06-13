@@ -11,7 +11,10 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Optional;
+
+import org.springframework.http.HttpStatus;
 
 /**
  * Endpoints espace Employé (/api/projets) + endpoint partagé (/api/projets/by-name).
@@ -29,17 +32,34 @@ class EmployeProjetController {
     private final ProjetService projetService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('EMPLOYE','CHEF','RH','ADMIN')")
+    @PreAuthorize("hasAnyRole('EMPLOYE','CHEF','RH','ADMIN','ADMIN_RH')")
     public ResponseEntity<List<ProjetDTO>> getMesProjets(Authentication auth) {
-        return ResponseEntity.ok(projetService.getMesProjets(auth));
+        try {
+            return ResponseEntity.ok(projetService.getMesProjets(auth));
+        } catch (Exception e) {
+            log.error("getMesProjets failed: {}", e.getMessage());
+            return ResponseEntity.ok(List.of());
+        }
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('EMPLOYE','CHEF','RH','ADMIN')")
-    public ResponseEntity<ProjetDTO> getProjetById(
+    @PreAuthorize("hasAnyRole('EMPLOYE','CHEF','RH','ADMIN','ADMIN_RH')")
+    public ResponseEntity<?> getProjetById(
             @PathVariable Long id,
             Authentication auth) {
-        return ResponseEntity.ok(projetService.getProjetById(id, auth));
+        try {
+            return ResponseEntity.ok(projetService.getProjetById(id, auth));
+        } catch (NoSuchElementException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", "Projet introuvable"));
+        } catch (SecurityException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "Accès interdit à ce projet"));
+        } catch (Exception e) {
+            log.error("getProjetById failed: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+        }
     }
 
     @GetMapping("/mes-taches")
@@ -77,7 +97,7 @@ class EmployeProjetController {
      * propage son propre JWT portant le rôle CHEF ou EMPLOYE.
      */
     @GetMapping("/by-name")
-    @PreAuthorize("hasAnyRole('EMPLOYE','CHEF','RH','ADMIN')")
+    @PreAuthorize("hasAnyRole('EMPLOYE','CHEF','RH','ADMIN','ADMIN_RH')")
     public ResponseEntity<Optional<ProjetDTO>> findByName(
             @RequestParam String nom,
             Authentication auth) {

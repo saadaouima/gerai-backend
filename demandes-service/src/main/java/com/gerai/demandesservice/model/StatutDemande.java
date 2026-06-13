@@ -11,9 +11,12 @@ public enum StatutDemande {
 
     EN_ATTENTE,
     VALIDEE_CHEF,
+    EN_ETUDE_DG,
+    VALIDEE_DG,
     VALIDEE_RH,
     REJETEE,
-    ANNULEE;
+    ANNULEE,
+    EN_ETUDE_MEDICALE;
 
     @JsonCreator
     public static StatutDemande from(String value) {
@@ -44,6 +47,8 @@ public enum StatutDemande {
                 case DOCUMENT     -> "EN_COURS";
                 case AUTORISATION -> "APPROUVE"; // Flux direct
             };
+            case EN_ETUDE_DG  -> "EN_ETUDE_DG"; // Crédit transmis au comité
+            case VALIDEE_DG   -> "VALIDEE_DG";  // Comité approuvé, en attente validation RH finale
             case VALIDEE_RH   -> switch (type) {
                 case CONGE        -> "VALIDE_RH";
                 case FORMATION    -> "APPROUVE_RH";
@@ -51,8 +56,9 @@ public enum StatutDemande {
                 case DOCUMENT     -> "LIVRE";
                 case AUTORISATION -> "APPROUVE";
             };
-            case REJETEE -> "REFUSE";
-            case ANNULEE -> "ANNULE";
+            case REJETEE           -> "REFUSE";
+            case ANNULEE           -> "ANNULE";
+            case EN_ETUDE_MEDICALE -> "EN_ETUDE_MEDICALE";
         };
     }
 
@@ -71,7 +77,13 @@ public enum StatutDemande {
             case "VALIDE_CHEF", "APPROUVE_CHEF", "EN_ETUDE", "EN_COURS" ->
                     VALIDEE_CHEF;
 
-            case "VALIDE_RH", "APPROUVE_RH", "APPROUVE", "LIVRE", "PRET" ->
+            case "EN_ETUDE_DG" ->
+                    EN_ETUDE_DG;
+
+            case "VALIDEE_DG" ->
+                    VALIDEE_DG;
+
+            case "VALIDE_RH", "APPROUVE_RH", "APPROUVE", "LIVRE", "PRET", "TRAITE" ->
                     VALIDEE_RH;
 
             case "REFUSE", "REJETE" ->
@@ -79,6 +91,9 @@ public enum StatutDemande {
 
             case "ANNULE", "REMBOURSE" ->
                     ANNULEE;
+
+            case "EN_ETUDE_MEDICALE" ->
+                    EN_ETUDE_MEDICALE;
 
             default ->
                     EN_ATTENTE;

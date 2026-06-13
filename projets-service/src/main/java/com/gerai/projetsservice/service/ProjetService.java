@@ -1,11 +1,12 @@
 package com.gerai.projetsservice.service;
 
-import com.gerai.projetsservice.config.JwtHelper;
+import com.gerai.projetsservice.config.JwtHelperInterface;
 import com.gerai.projetsservice.dto.*;
 import com.gerai.projetsservice.model.*;
 import com.gerai.projetsservice.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,9 +24,10 @@ public class ProjetService {
     private final TaskRepository            taskRepo;
     private final TaskCommentRepository     commentRepo;
     private final PerformanceEvalRepository evalRepo;
-    private final JwtHelper                 jwt;
+    private final JwtHelperInterface         jwt;
     private final EmployeService            employeService;
     private final ProjectNotificationService notifService;
+    private final JdbcTemplate              jdbc;
 
     @Transactional(readOnly = true)
     public List<ProjetDTO> getProjetsChef(Authentication auth) {
@@ -54,7 +56,6 @@ public class ProjetService {
         }
         log.info("[Projet] Créé id={} par chef={}", project.getProjectId(), chefId);
         final Project saved = project;
-        notifService.notifierProjetCree(saved, chefId);
         for (Long empId : membresAjoutes) notifService.notifierMembreAjoute(saved, empId, chefId);
         return toProjetDTO(project);
     }
@@ -121,10 +122,11 @@ public class ProjetService {
         Task task = taskRepo.findById(taskId).orElseThrow(() -> new NoSuchElementException("Tâche introuvable"));
         findProjetOwnedByChef(task.getProject().getProjectId(), chefId);
         Long ancienAssigne = task.getAssignedTo();
-        if (req.getTitre()         != null) task.setTitle(req.getTitre());
-        if (req.getDescription()   != null) task.setDescription(req.getDescription());
-        if (req.getAssignedTo()    != null) task.setAssignedTo(req.getAssignedTo());
-        if (req.getEcheance()      != null) task.setDueDate(req.getEcheance());
+        if (req.getTitre()          != null) task.setTitle(req.getTitre());
+        if (req.getDescription()    != null) task.setDescription(req.getDescription());
+        if (req.getAssignedTo()     != null) task.setAssignedTo(req.getAssignedTo());
+        if (req.getPrioritize()     != null) task.setPriority(req.getPrioritize());
+        if (req.getEcheance()       != null) task.setDueDate(req.getEcheance());
         if (req.getEstimatedHours() != null) task.setEstimatedHours(req.getEstimatedHours());
         Task saved = taskRepo.save(task);
         if (req.getAssignedTo() != null && !req.getAssignedTo().equals(ancienAssigne)) notifService.notifierTacheAssignee(saved, chefId);
@@ -195,6 +197,24 @@ public class ProjetService {
         return toTacheDTO(saved);
     }
 
+    @Transactional
+    public void deleteTache(Long taskId, Authentication auth) {
+        if (!taskRepo.existsById(taskId)) {
+            throw new IllegalArgumentException("Tâche introuvable: " + taskId);
+        }
+        taskRepo.deleteById(taskId);
+        log.info("[Tache] Supprimée id={}", taskId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<TacheDTO> getTachesChef(Authentication auth) {
+        Long chefId = jwt.getEmployeeId(auth);
+        return projectRepo.findByCreatedByOrderByCreatedAtDesc(chefId).stream()
+                .flatMap(p -> taskRepo.findByProject_ProjectIdOrderByCreatedAtAsc(p.getProjectId()).stream())
+                .map(this::toTacheDTO)
+                .collect(Collectors.toList());
+    }
+
     @Transactional(readOnly = true)
     public List<ProjetDTO> getAllProjets() {
         return projectRepo.findAll().stream().map(this::toProjetDTO).collect(Collectors.toList());
@@ -221,7 +241,112 @@ public class ProjetService {
     @Transactional(readOnly = true)
     public List<PerformanceEvalDTO> getEvals() { return evalRepo.findAll().stream().map(this::toEvalDTO).collect(Collectors.toList()); }
 
-    public List<EmployeDTO> getEmployes() { return employeService.getAllEmployes(); }
+    public List<EmployeDTO> getEmployes(Authentication auth) {
+        Long excludeId;
+        try {
+            excludeId = jwt.getEmployeeId(auth);
+        } catch (Exception e) {
+            log.warn("[ProjetService] getEmployes: could not resolve caller ID — {}", e.getMessage());
+            excludeId = 0L;
+        }
+        try {
+            return jdbc.query(
+                "SELECT e.EMPLOYEE_ID, e.FIRST_NAME, e.LAST_NAME, e.EMAIL, e.PHONE, " +
+                "       e.PHOTO_URL, e.STATUS, TO_CHAR(e.HIRE_DATE, 'YYYY-MM-DD') AS HIRE_DATE_STR, " +
+                "       d.NOM AS DEPT_NOM, " +
+                "       p.TITLE AS POSITION_TITLE, " +
+                "       pr.PROJECT_ID AS CURRENT_PROJECT_ID, " +
+                "       pr.NAME       AS CURRENT_PROJECT_NOM " +
+                "FROM GERAI.EMPLOYEES e " +
+                "LEFT JOIN GERAI.ADMIN_DEPARTEMENTS d  ON e.DEPT_ID       = d.DEPT_ADMIN_ID " +
+                "LEFT JOIN GERAI.POSITIONS          p  ON e.POSITION_ID   = p.POSITION_ID " +
+                "LEFT JOIN PROJECT_MEMBERS          pm ON e.EMPLOYEE_ID   = pm.EMPLOYEE_ID AND pm.IS_ACTIVE = 1 " +
+                "LEFT JOIN PROJECTS                 pr ON pm.PROJECT_ID   = pr.PROJECT_ID " +
+                "WHERE e.STATUS = 'ACTIF' " +
+                "  AND e.EMPLOYEE_ID != ? " +
+                "  AND (p.POS_LEVEL IS NULL OR p.POS_LEVEL NOT IN ('EXECUTIVE', 'MANAGER')) " +
+                "ORDER BY e.LAST_NAME, e.FIRST_NAME",
+                new Object[]{ excludeId },
+                (rs, i) -> {
+                    long pid = rs.getLong("CURRENT_PROJECT_ID");
+                    boolean noProject = rs.wasNull();
+                    return EmployeDTO.builder()
+                        .id(rs.getLong("EMPLOYEE_ID"))
+                        .prenom(rs.getString("FIRST_NAME"))
+                        .nom(rs.getString("LAST_NAME"))
+                        .email(rs.getString("EMAIL"))
+                        .telephone(rs.getString("PHONE"))
+                        .photo(rs.getString("PHOTO_URL"))
+                        .statut(rs.getString("STATUS"))
+                        .dateEmbauche(rs.getString("HIRE_DATE_STR"))
+                        .poste(Optional.ofNullable(rs.getString("POSITION_TITLE")).orElse(""))
+                        .departement(rs.getString("DEPT_NOM"))
+                        .nomComplet(rs.getString("FIRST_NAME") + " " + rs.getString("LAST_NAME"))
+                        .projetId(noProject ? null : pid)
+                        .projetNom(rs.getString("CURRENT_PROJECT_NOM"))
+                        .build();
+                }
+            );
+        } catch (Exception e) {
+            log.warn("[ProjetService] getEmployes DB fallback vide : {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    private Map<Long, EmployeDTO> fetchEmployeMap(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) return Map.of();
+        String inClause = ids.stream().map(id -> "?").collect(Collectors.joining(","));
+        String sql = "SELECT e.EMPLOYEE_ID, e.FIRST_NAME, e.LAST_NAME, e.EMAIL, e.PHONE, " +
+                     "       e.PHOTO_URL, e.STATUS, TO_CHAR(e.HIRE_DATE, 'YYYY-MM-DD') AS HIRE_DATE_STR, " +
+                     "       d.NOM AS DEPT_NOM " +
+                     "FROM GERAI.EMPLOYEES e " +
+                     "LEFT JOIN GERAI.ADMIN_DEPARTEMENTS d ON e.DEPT_ID = d.DEPT_ADMIN_ID " +
+                     "WHERE e.EMPLOYEE_ID IN (" + inClause + ")";
+        try {
+            return jdbc.query(sql, ids.toArray(), (rs, i) -> EmployeDTO.builder()
+                .id(rs.getLong("EMPLOYEE_ID"))
+                .prenom(rs.getString("FIRST_NAME"))
+                .nom(rs.getString("LAST_NAME"))
+                .nomComplet(rs.getString("FIRST_NAME") + " " + rs.getString("LAST_NAME"))
+                .email(rs.getString("EMAIL"))
+                .telephone(rs.getString("PHONE"))
+                .photo(rs.getString("PHOTO_URL"))
+                .statut(rs.getString("STATUS"))
+                .dateEmbauche(rs.getString("HIRE_DATE_STR"))
+                .departement(rs.getString("DEPT_NOM"))
+                .poste("")
+                .build()
+            ).stream().collect(Collectors.toMap(EmployeDTO::getId, e -> e));
+        } catch (Exception e) {
+            log.warn("[ProjetService] fetchEmployeMap failed: {}", e.getMessage());
+            return Map.of();
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public PerformanceChefDTO getPerformanceChef(Authentication auth) {
+        Long chefId = jwt.getEmployeeId(auth);
+        List<Project> projets = projectRepo.findByCreatedByOrderByCreatedAtDesc(chefId);
+
+        long total = projets.size();
+        long termines = projets.stream().filter(p -> "TERMINE".equals(p.getStatus())).count();
+        double tauxLivraison = total > 0 ? round2((termines * 100.0) / total) : 0;
+
+        long taches   = projets.stream().mapToLong(p -> taskRepo.countByProjectId(p.getProjectId())).sum();
+        long tachesOk = projets.stream().mapToLong(p -> taskRepo.countTerminesByProjectId(p.getProjectId())).sum();
+        double collaboration = taches > 0 ? round2((tachesOk * 100.0) / taches) : 0;
+
+        double avgScore = evalRepo.findByEvaluatorIdOrderByCreatedAtDesc(chefId)
+                .stream().mapToDouble(e -> e.getScore() != null ? e.getScore() : 0).average().orElse(80.0);
+
+        return PerformanceChefDTO.builder()
+                .tauxLivraisonProjet(tauxLivraison)
+                .satisfactionClient(total > 0 ? Math.min(5.0, round2(tauxLivraison / 20.0)) : 4.0)
+                .collaborationEquipe(collaboration)
+                .qualiteCode(Math.min(100.0, avgScore))
+                .tempsResolutionBugs(2.5)
+                .build();
+    }
 
     /** Consommé par taches-service via Feign (GET /api/projets/by-name) */
     @Transactional(readOnly = true)
@@ -235,8 +360,21 @@ public class ProjetService {
         return p;
     }
 
+    @Transactional
     public void addMembre(Project project, Long employeeId, String role) {
-        memberRepo.save(ProjectMember.builder().project(project).employeeId(employeeId).role(role).isActive(1).build());
+        // One-active-project-per-MEMBRE rule — CHEF can manage multiple projects
+        if (!"CHEF".equals(role) && !"TERMINE".equals(project.getStatus())) {
+            memberRepo.findActiveByEmployeeId(employeeId).stream()
+                .filter(m -> !m.getProject().getProjectId().equals(project.getProjectId()))
+                .findFirst()
+                .ifPresent(m -> {
+                    throw new IllegalArgumentException(
+                        "L'employé #" + employeeId + " est déjà affecté au projet \"" +
+                        m.getProject().getName() + "\"");
+                });
+        }
+        memberRepo.save(ProjectMember.builder()
+            .project(project).employeeId(employeeId).role(role).isActive(1).build());
     }
 
     private void updateProjetProgression(Long projectId) {
@@ -245,10 +383,22 @@ public class ProjetService {
     }
 
     private ProjetDTO toProjetDTO(Project p) {
-        List<MembreDTO> membres = memberRepo.findActiveByProjectId(p.getProjectId()).stream().map(m -> {
-            EmployeDTO emp = employeService.getEmployeById(m.getEmployeeId());
-            return MembreDTO.builder().id(m.getEmployeeId()).prenom(emp != null ? emp.getPrenom() : "").nom(emp != null ? emp.getNom() : "")
-                    .nomComplet(emp != null ? emp.getNomComplet() : "").initiales(buildInitiales(emp)).role(m.getRole()).poste(emp != null ? emp.getPoste() : "").build();
+        List<ProjectMember> rawMembres = memberRepo.findActiveByProjectId(p.getProjectId());
+        List<Long> ids = rawMembres.stream().map(ProjectMember::getEmployeeId).collect(Collectors.toList());
+        Map<Long, EmployeDTO> empMap = fetchEmployeMap(ids);
+        List<MembreDTO> membres = rawMembres.stream().map(m -> {
+            EmployeDTO emp = empMap.getOrDefault(m.getEmployeeId(),
+                EmployeDTO.builder().id(m.getEmployeeId()).prenom("Emp").nom("#" + m.getEmployeeId())
+                    .nomComplet("Employé #" + m.getEmployeeId()).build());
+            return MembreDTO.builder()
+                .id(m.getEmployeeId()).prenom(emp.getPrenom()).nom(emp.getNom())
+                .nomComplet(emp.getNomComplet()).initiales(buildInitiales(emp))
+                .role(m.getRole()).poste(emp.getPoste() != null ? emp.getPoste() : "")
+                .email(emp.getEmail() != null ? emp.getEmail() : "")
+                .telephone(emp.getTelephone()).statut(emp.getStatut() != null ? emp.getStatut() : "ACTIF")
+                .dateEmbauche(emp.getDateEmbauche()).departement(emp.getDepartement())
+                .photo(emp.getPhoto())
+                .build();
         }).collect(Collectors.toList());
         String chefNom = membres.stream().filter(m -> "CHEF".equals(m.getRole())).map(MembreDTO::getNomComplet).findFirst().orElse("—");
         List<TacheDTO> taches = taskRepo.findByProject_ProjectIdOrderByCreatedAtAsc(p.getProjectId()).stream().map(this::toTacheDTO).collect(Collectors.toList());

@@ -5,7 +5,7 @@ import lombok.*;
 import org.hibernate.annotations.Immutable;
 
 /**
- * Entité légère en lecture seule sur GERAI_USER.EMPLOYEES.
+ * Entité légère en lecture seule sur GERAI.EMPLOYEES.
  * Utilisée uniquement par EmployeeRepository pour résoudre
  * les IDs Oracle depuis le JWT Keycloak.
  *
@@ -44,4 +44,10 @@ public class EmployeeRef {
 
     @Column(name = "STATUS")
     private String status;
+
+    @Column(name = "PHOTO_URL")
+    private String photoUrl;
+
+    @Column(name = "JOB_TITLE")
+    private String jobTitle;
 }

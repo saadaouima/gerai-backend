@@ -26,10 +26,10 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class TacheNotificationProducer {
 
+    private final EmployeeQueryRepository                       empRepo;
     private final KafkaTemplate<String, TacheNotificationEvent> kafkaTemplate;
-    private final EmployeeQueryRepository empRepo;
 
-    @Value("${app.kafka.topic.notifications:notification-events}")
+    @Value("${app.kafka.topic.notifications}")
     private String topic;
 
     /* ── 1. NOUVELLE ASSIGNATION → notification à l'EMPLOYÉ ── */
@@ -63,37 +63,7 @@ public class TacheNotificationProducer {
         send(event, "ASSIGNATION tâche=" + task.getTaskId() + " → emp=" + task.getAssignedTo());
     }
 
-    /* ── 2. CONFIRMATION AU CHEF après création ───────────── */
-
-    @Async
-    public void notifierChefCreation(Task task, ProjetDTO projet, Long chefId) {  // ← ProjetDTO
-        if (chefId == null) return;
-
-        String emailChef   = empRepo.findEmailById(chefId);
-        String keycloakSub = empRepo.findKeycloakSubById(chefId);
-        String nomProjet   = projet != null ? projet.getNom() : "Projet inconnu";
-        String nomAssigne  = task.getAssignedTo() != null
-                ? empRepo.findFullNameById(task.getAssignedTo()) : "non assigné";
-
-        TacheNotificationEvent event = TacheNotificationEvent.builder()
-                .employeeId(chefId)
-                .email(emailChef)
-                .keycloakSub(keycloakSub)
-                .role("CHEF")
-                .type("INFO")
-                .title("Tâche créée : " + truncate(task.getTitle(), 60))
-                .content(String.format(
-                        "La tâche \"%s\" a été créée dans \"%s\" et assignée à %s.",
-                        task.getTitle(), nomProjet, nomAssigne))
-                .referenceId(String.valueOf(task.getTaskId()))
-                .referenceType("TACHE")
-                .actionUrl("/chef/taches")
-                .build();
-
-        send(event, "CREATION CHEF tâche=" + task.getTaskId() + " → chef=" + chefId);
-    }
-
-    /* ── 3. CHANGEMENT DE STATUT → notification au CHEF ───── */
+    /* ── 2. CHANGEMENT DE STATUT → notification au CHEF ───── */
 
     @Async
     public void notifierStatutChange(Task task, String ancienStatut, ProjetDTO projet) {  // ← ProjetDTO
@@ -208,14 +178,18 @@ public class TacheNotificationProducer {
     /* ── Envoi Kafka ─────────────────────────────────────── */
 
     private void send(TacheNotificationEvent event, String logLabel) {
-        try {
-            String key = event.getEmployeeId() != null
-                    ? String.valueOf(event.getEmployeeId()) : "0";
-            kafkaTemplate.send(topic, key, event);
-            log.info("[TacheKafka] Event envoyé | {} | topic={}", logLabel, topic);
-        } catch (Exception e) {
-            log.error("[TacheKafka] Erreur envoi event {} : {}", logLabel, e.getMessage());
-        }
+        if (event.getEmployeeId() == null) return;
+        kafkaTemplate.send(topic, String.valueOf(event.getEmployeeId()), event)
+                .whenComplete((result, ex) -> {
+                    if (ex != null) {
+                        log.warn("[TacheNotif] Échec Kafka | {} : {}", logLabel, ex.getMessage());
+                    } else {
+                        log.info("[TacheNotif] Publié | {} | partition={} | offset={}",
+                                logLabel,
+                                result.getRecordMetadata().partition(),
+                                result.getRecordMetadata().offset());
+                    }
+                });
     }
 
     /* ── Helpers ─────────────────────────────────────────── */

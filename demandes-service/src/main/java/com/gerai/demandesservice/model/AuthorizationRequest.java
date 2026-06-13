@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * Entité mappée sur GERAI_USER.AUTHORIZATION_REQUESTS (10 colonnes).
+ * Entité mappée sur GERAI.AUTHORIZATION_REQUESTS (10 colonnes).
  *
  * Statuts valides (CHECK Oracle) :
  *   EN_ATTENTE | APPROUVE | REFUSE

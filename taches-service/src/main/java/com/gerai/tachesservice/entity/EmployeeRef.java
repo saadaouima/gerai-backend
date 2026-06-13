@@ -5,7 +5,7 @@ import lombok.*;
 import org.hibernate.annotations.Immutable;
 
 /**
- * Projection légère de GERAI_USER.EMPLOYEES.
+ * Projection légère de GERAI.EMPLOYEES.
  * Seuls les champs nécessaires au service Tâches sont chargés.
  */
 @Entity

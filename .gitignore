@@ -9,6 +9,22 @@ out/
 .env
 *.env
 
+# Logs
+*.log
+*-err.log
+run.log
+run.err
+
+# Secret scanner artifacts
+expressions.txt
+
+# Local scripts
+restart-*.ps1
+restart-*.bat
+start.bat
+start_direct.bat
+build.bat
+
 ### STS ###
 .apt_generated
 .classpath

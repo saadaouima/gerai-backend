@@ -53,25 +53,51 @@ public class ChatService {
 
     @Transactional
     public ConversationDTO getOuCreerConversationDirecte(Long emp1Id, Long emp2Id) {
+        // 1. Standard lookup: conversation with both participants
         List<Conversation> existantes = convRepo.findAllDirectConversations(emp1Id, emp2Id);
-
         if (!existantes.isEmpty()) {
             return toConversationDTO(existantes.get(0), emp1Id);
         }
 
+        // 2. Recovery: find any DIRECT conversation where emp1 is participant
+        //    to handle partial state from a previous failed transaction
+        for (Conversation c : convRepo.findAllByEmployeeId(emp1Id)) {
+            if (!"DIRECT".equals(c.getType())) continue;
+            List<ConversationParticipant> parts =
+                    partRepo.findByConversation_ConversationId(c.getConversationId());
+            boolean hasEmp2 = parts.stream().anyMatch(p -> emp2Id.equals(p.getEmployeeId()));
+            if (hasEmp2) {
+                return toConversationDTO(c, emp1Id);
+            }
+            if (parts.size() == 1 && emp1Id.equals(parts.get(0).getEmployeeId())) {
+                // Half-created conversation: add the missing participant
+                partRepo.save(ConversationParticipant.builder()
+                        .conversation(c).employeeId(emp2Id).role("MEMBRE").build());
+                return toConversationDTO(c, emp1Id);
+            }
+        }
+
+        // 3. Create a new conversation
         Conversation conv = Conversation.builder()
                 .type("DIRECT")
                 .createdBy(emp1Id)
                 .isActive(1)
                 .lastMessageAt(LocalDateTime.now())
                 .build();
-
         conv = convRepo.save(conv);
 
-        partRepo.save(ConversationParticipant.builder().conversation(conv).employeeId(emp1Id).role("MEMBRE").build());
-        partRepo.save(ConversationParticipant.builder().conversation(conv).employeeId(emp2Id).role("MEMBRE").build());
+        safeAddParticipant(conv, emp1Id);
+        safeAddParticipant(conv, emp2Id);
 
         return toConversationDTO(conv, emp1Id);
+    }
+
+    private void safeAddParticipant(Conversation conv, Long employeeId) {
+        if (partRepo.findByConversation_ConversationIdAndEmployeeId(
+                conv.getConversationId(), employeeId).isEmpty()) {
+            partRepo.save(ConversationParticipant.builder()
+                    .conversation(conv).employeeId(employeeId).role("MEMBRE").build());
+        }
     }
 
     @Transactional

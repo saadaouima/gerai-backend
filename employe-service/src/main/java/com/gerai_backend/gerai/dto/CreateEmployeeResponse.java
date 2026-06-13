@@ -31,6 +31,7 @@ public class CreateEmployeeResponse {
     private Long positionId;
     private Long managerId;
 
+    private String username;       // Keycloak login (prénom.nom)
     private String status;        // ACTIF par défaut
     private String keycloakUserId;
 

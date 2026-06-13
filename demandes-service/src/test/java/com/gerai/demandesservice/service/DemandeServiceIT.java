@@ -11,7 +11,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -61,8 +60,6 @@ class DemandeServiceIT {
 
     /* Mocké car dépend de la base Oracle GERAI_USER.EMPLOYEES */
     @MockitoBean EmployeeRepository employeeRepo;
-    @MockitoBean KafkaTemplate<String, NotificationMessage> kafkaTemplate;
-
     /* ── Constantes ─────────────────────────────────── */
     private static final Long   EMP_ID     = 10L;
     private static final Long   MANAGER_ID = 20L;

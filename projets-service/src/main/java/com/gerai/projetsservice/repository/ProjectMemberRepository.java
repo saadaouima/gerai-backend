@@ -22,4 +22,12 @@ public interface ProjectMemberRepository extends JpaRepository<ProjectMember, Lo
     List<ProjectMember> findActiveByProjectId(@Param("projectId") Long projectId);
 
     void deleteByProject_ProjectIdAndEmployeeId(Long projectId, Long employeeId);
+
+    @Query("""
+            SELECT pm FROM ProjectMember pm
+            JOIN FETCH pm.project
+            WHERE pm.employeeId = :employeeId
+              AND pm.isActive = 1
+            """)
+    List<ProjectMember> findActiveByEmployeeId(@Param("employeeId") Long employeeId);
 }

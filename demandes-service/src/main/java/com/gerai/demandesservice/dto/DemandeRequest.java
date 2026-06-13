@@ -43,11 +43,15 @@ public class DemandeRequest {
     private BigDecimal estimatedCost;
     private LocalDate  plannedDate;
     private Integer    durationDays;
+    private String     lieu;
+    private String     modeFormation;
 
     /* ── PRÊT (LOAN_REQUESTS) ────────────────────────── */
     private BigDecimal amount;
     private String     currency;
     private Integer    durationMonths;
+    /** Si null, la valeur par défaut (true) s'applique — commission requise sauf indication contraire. */
+    private Boolean    needsCommission;
 
     /* ── DOCUMENT (DOCUMENT_REQUESTS) ────────────────── */
     private Long       docTypeId;

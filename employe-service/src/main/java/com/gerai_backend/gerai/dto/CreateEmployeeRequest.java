@@ -2,6 +2,7 @@ package com.gerai_backend.gerai.dto;
 
 import lombok.*;
 import java.time.LocalDate;
+import java.util.List;
 
 /**
  * Corrections vs l'ancienne version :
@@ -41,4 +42,7 @@ public class CreateEmployeeRequest {
     private String gender;      // M | F | AUTRE
     private String address;
     private String photoUrl;
+
+    /** Keycloak realm roles to assign (e.g. ["employe"], ["chef"]) */
+    private List<String> roles;
 }

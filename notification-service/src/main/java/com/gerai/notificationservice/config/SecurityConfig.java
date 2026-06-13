@@ -32,12 +32,9 @@ public class SecurityConfig {
 
                 // ✅ Règles d'accès
                 .authorizeHttpRequests(auth -> auth
-                        // WebSocket handshake autorisé
-                        .requestMatchers("/ws/**").permitAll()
-
-                        // API notifications protégée
+                        .requestMatchers("/ws/**", "/ws-notifications/**").permitAll()
+                        .requestMatchers("/internal/**").permitAll()
                         .requestMatchers("/api/notifications/**").authenticated()
-
                         .anyRequest().permitAll()
                 )
 

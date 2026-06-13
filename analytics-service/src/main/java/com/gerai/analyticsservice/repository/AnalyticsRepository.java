@@ -28,7 +28,7 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
      */
     @Query(value = """
             SELECT DEPT_ID
-            FROM GERAI_USER.EMPLOYEES
+            FROM GERAI.EMPLOYEES
             WHERE EMAIL = :email
               AND STATUS = 'ACTIF'
             """, nativeQuery = true)
@@ -40,7 +40,7 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
      */
     @Query(value = """
             SELECT DEPT_ID
-            FROM GERAI_USER.EMPLOYEES
+            FROM GERAI.EMPLOYEES
             WHERE USER_ID = :keycloakSub
               AND STATUS  = 'ACTIF'
             """, nativeQuery = true)
@@ -51,30 +51,30 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
      */
     @Query(value = """
             SELECT EMPLOYEE_ID
-            FROM GERAI_USER.EMPLOYEES
+            FROM GERAI.EMPLOYEES
             WHERE USER_ID = :keycloakSub
               AND STATUS  = 'ACTIF'
             """, nativeQuery = true)
     Long findEmployeeIdBySubject(@Param("keycloakSub") String keycloakSub);
 
     /* ═══════════════════════════════════════════════════════════
-       COMPTAGES GLOBAUX — Vue GERAI_USER.V_ALL_DEMANDES
+       COMPTAGES GLOBAUX — Vue GERAI.V_ALL_DEMANDES
        ═══════════════════════════════════════════════════════════ */
 
-    @Query(value = "SELECT COUNT(*) FROM GERAI_USER.V_ALL_DEMANDES",
+    @Query(value = "SELECT COUNT(*) FROM GERAI.V_ALL_DEMANDES",
             nativeQuery = true)
     long countTotal();
 
     @Query(value = """
             SELECT COUNT(*)
-            FROM GERAI_USER.V_ALL_DEMANDES
+            FROM GERAI.V_ALL_DEMANDES
             WHERE STATUT = :statut
             """, nativeQuery = true)
     long countByStatut(@Param("statut") String statut);
 
     @Query(value = """
             SELECT NVL(TYPE,'INCONNU') AS TYPE_VAL, COUNT(*) AS TOTAL
-            FROM GERAI_USER.V_ALL_DEMANDES
+            FROM GERAI.V_ALL_DEMANDES
             GROUP BY TYPE
             ORDER BY TYPE
             """, nativeQuery = true)
@@ -82,7 +82,7 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
 
     @Query(value = """
             SELECT NVL(STATUT,'INCONNU') AS STATUT_VAL, COUNT(*) AS TOTAL
-            FROM GERAI_USER.V_ALL_DEMANDES
+            FROM GERAI.V_ALL_DEMANDES
             GROUP BY STATUT
             ORDER BY STATUT
             """, nativeQuery = true)
@@ -90,7 +90,7 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
 
     @Query(value = """
             SELECT TO_CHAR(DATE_CREATION,'YYYY-MM') AS MOIS, COUNT(*) AS TOTAL
-            FROM GERAI_USER.V_ALL_DEMANDES
+            FROM GERAI.V_ALL_DEMANDES
             WHERE DATE_CREATION IS NOT NULL
             GROUP BY TO_CHAR(DATE_CREATION,'YYYY-MM')
             ORDER BY MOIS
@@ -101,7 +101,7 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
             SELECT TO_CHAR(DATE_CREATION,'YYYY-MM') AS MOIS,
                    NVL(TYPE,'INCONNU')              AS TYPE_VAL,
                    COUNT(*)                         AS TOTAL
-            FROM GERAI_USER.V_ALL_DEMANDES
+            FROM GERAI.V_ALL_DEMANDES
             WHERE DATE_CREATION IS NOT NULL
             GROUP BY TO_CHAR(DATE_CREATION,'YYYY-MM'), TYPE
             ORDER BY MOIS, TYPE
@@ -109,39 +109,39 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
     List<Object[]> countGroupByMoisAndType();
 
     /* ═══════════════════════════════════════════════════════════
-       STATS CONGÉS — GERAI_USER.LEAVE_REQUESTS
+       STATS CONGÉS — GERAI.LEAVE_REQUESTS
        Statuts : EN_ATTENTE | VALIDE_CHEF | VALIDE_RH | REFUSE | ANNULE
        ═══════════════════════════════════════════════════════════ */
 
-    @Query(value = "SELECT COUNT(*) FROM GERAI_USER.LEAVE_REQUESTS",
+    @Query(value = "SELECT COUNT(*) FROM GERAI.LEAVE_REQUESTS",
             nativeQuery = true)
     long countTotalConges();
 
-    @Query(value = "SELECT COUNT(*) FROM GERAI_USER.LEAVE_REQUESTS WHERE STATUS = 'VALIDE_RH'",
+    @Query(value = "SELECT COUNT(*) FROM GERAI.LEAVE_REQUESTS WHERE STATUS = 'VALIDE_RH'",
             nativeQuery = true)
     long countCongesValides();
 
-    @Query(value = "SELECT COUNT(*) FROM GERAI_USER.LEAVE_REQUESTS WHERE STATUS = 'REFUSE'",
+    @Query(value = "SELECT COUNT(*) FROM GERAI.LEAVE_REQUESTS WHERE STATUS = 'REFUSE'",
             nativeQuery = true)
     long countCongesRefuses();
 
     @Query(value = """
             SELECT COUNT(*)
-            FROM GERAI_USER.LEAVE_REQUESTS
+            FROM GERAI.LEAVE_REQUESTS
             WHERE STATUS IN ('EN_ATTENTE','VALIDE_CHEF')
             """, nativeQuery = true)
     long countCongesEnAttente();
 
     @Query(value = """
             SELECT NVL(ROUND(AVG(DAYS_COUNT), 2), 0)
-            FROM GERAI_USER.LEAVE_REQUESTS
+            FROM GERAI.LEAVE_REQUESTS
             WHERE DAYS_COUNT IS NOT NULL AND DAYS_COUNT > 0
             """, nativeQuery = true)
     Double avgJoursConge();
 
     @Query(value = """
             SELECT TO_CHAR(CREATED_AT,'YYYY-MM') AS MOIS, COUNT(*) AS TOTAL
-            FROM GERAI_USER.LEAVE_REQUESTS
+            FROM GERAI.LEAVE_REQUESTS
             WHERE CREATED_AT IS NOT NULL
             GROUP BY TO_CHAR(CREATED_AT,'YYYY-MM')
             ORDER BY MOIS
@@ -149,46 +149,46 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
     List<Object[]> countCongesGroupByMois();
 
     /* ═══════════════════════════════════════════════════════════
-       STATS FORMATIONS — GERAI_USER.TRAINING_REQUESTS
+       STATS FORMATIONS — GERAI.TRAINING_REQUESTS
        Statuts : EN_ATTENTE | APPROUVE_CHEF | APPROUVE_RH | REFUSE | ANNULE
        ═══════════════════════════════════════════════════════════ */
 
-    @Query(value = "SELECT COUNT(*) FROM GERAI_USER.TRAINING_REQUESTS",
+    @Query(value = "SELECT COUNT(*) FROM GERAI.TRAINING_REQUESTS",
             nativeQuery = true)
     long countTotalFormations();
 
-    @Query(value = "SELECT COUNT(*) FROM GERAI_USER.TRAINING_REQUESTS WHERE STATUS = 'APPROUVE_RH'",
+    @Query(value = "SELECT COUNT(*) FROM GERAI.TRAINING_REQUESTS WHERE STATUS = 'APPROUVE_RH'",
             nativeQuery = true)
     long countFormationsValidees();
 
-    @Query(value = "SELECT COUNT(*) FROM GERAI_USER.TRAINING_REQUESTS WHERE STATUS = 'REFUSE'",
+    @Query(value = "SELECT COUNT(*) FROM GERAI.TRAINING_REQUESTS WHERE STATUS = 'REFUSE'",
             nativeQuery = true)
     long countFormationsRefusees();
 
     @Query(value = """
             SELECT COUNT(*)
-            FROM GERAI_USER.TRAINING_REQUESTS
+            FROM GERAI.TRAINING_REQUESTS
             WHERE STATUS IN ('EN_ATTENTE','APPROUVE_CHEF')
             """, nativeQuery = true)
     long countFormationsEnAttente();
 
     @Query(value = """
             SELECT NVL(SUM(ESTIMATED_COST), 0)
-            FROM GERAI_USER.TRAINING_REQUESTS
+            FROM GERAI.TRAINING_REQUESTS
             WHERE STATUS = 'APPROUVE_RH'
             """, nativeQuery = true)
     double sumBudgetFormations();
 
     @Query(value = """
             SELECT NVL(ROUND(AVG(DURATION_DAYS), 2), 0)
-            FROM GERAI_USER.TRAINING_REQUESTS
+            FROM GERAI.TRAINING_REQUESTS
             WHERE DURATION_DAYS IS NOT NULL AND DURATION_DAYS > 0
             """, nativeQuery = true)
     double avgDureeFormations();
 
     @Query(value = """
             SELECT TO_CHAR(CREATED_AT,'YYYY-MM') AS MOIS, COUNT(*) AS TOTAL
-            FROM GERAI_USER.TRAINING_REQUESTS
+            FROM GERAI.TRAINING_REQUESTS
             WHERE CREATED_AT IS NOT NULL
             GROUP BY TO_CHAR(CREATED_AT,'YYYY-MM')
             ORDER BY MOIS
@@ -201,7 +201,7 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
 
     @Query(value = """
             SELECT COUNT(DISTINCT EMPLOYEE_ID)
-            FROM GERAI_USER.LEAVE_REQUESTS
+            FROM GERAI.LEAVE_REQUESTS
             WHERE STATUS = 'VALIDE_RH'
               AND TRUNC(SYSDATE) BETWEEN TRUNC(START_DATE) AND TRUNC(END_DATE)
             """, nativeQuery = true)
@@ -212,15 +212,15 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
      */
     @Query(value = """
             SELECT COUNT(DISTINCT lr.EMPLOYEE_ID)
-            FROM GERAI_USER.LEAVE_REQUESTS lr
-            JOIN GERAI_USER.EMPLOYEES e ON lr.EMPLOYEE_ID = e.EMPLOYEE_ID
+            FROM GERAI.LEAVE_REQUESTS lr
+            JOIN GERAI.EMPLOYEES e ON lr.EMPLOYEE_ID = e.EMPLOYEE_ID
             WHERE lr.STATUS = 'VALIDE_RH'
               AND e.DEPT_ID = :deptId
               AND TRUNC(SYSDATE) BETWEEN TRUNC(lr.START_DATE) AND TRUNC(lr.END_DATE)
             """, nativeQuery = true)
     long countAbsentsAujourdhuiParDept(@Param("deptId") Long deptId);
 
-    @Query(value = "SELECT COUNT(*) FROM GERAI_USER.PROJECTS WHERE STATUS = 'EN_COURS'",
+    @Query(value = "SELECT COUNT(*) FROM GERAI.PROJECTS WHERE STATUS = 'EN_COURS'",
             nativeQuery = true)
     long countProjetsActifs();
 
@@ -228,12 +228,12 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
      * Projets actifs dans un département spécifique (pour le Chef).
      */
     @Query(value = """
-            SELECT COUNT(*) FROM GERAI_USER.PROJECTS
+            SELECT COUNT(*) FROM GERAI.PROJECTS
             WHERE STATUS = 'EN_COURS' AND DEPT_ID = :deptId
             """, nativeQuery = true)
     long countProjetsActifsParDept(@Param("deptId") Long deptId);
 
-    @Query(value = "SELECT COUNT(*) FROM GERAI_USER.TASKS WHERE STATUS <> 'TERMINE'",
+    @Query(value = "SELECT COUNT(*) FROM GERAI.TASKS WHERE STATUS <> 'TERMINE'",
             nativeQuery = true)
     long countTachesOuvertes();
 
@@ -242,8 +242,8 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
      */
     @Query(value = """
             SELECT COUNT(*)
-            FROM GERAI_USER.TASKS t
-            JOIN GERAI_USER.PROJECTS p ON t.PROJECT_ID = p.PROJECT_ID
+            FROM GERAI.TASKS t
+            JOIN GERAI.PROJECTS p ON t.PROJECT_ID = p.PROJECT_ID
             WHERE t.STATUS  <> 'TERMINE'
               AND p.DEPT_ID = :deptId
             """, nativeQuery = true)
@@ -256,7 +256,7 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
     @Query(value = """
             WITH total_dispo AS (
                 SELECT COUNT(*) * 22 AS DISPO
-                FROM GERAI_USER.EMPLOYEES
+                FROM GERAI.EMPLOYEES
                 WHERE STATUS = 'ACTIF'
             )
             SELECT NVL(
@@ -266,7 +266,7 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
                     2
                 ), 0
             )
-            FROM GERAI_USER.LEAVE_REQUESTS lr, total_dispo td
+            FROM GERAI.LEAVE_REQUESTS lr, total_dispo td
             WHERE lr.STATUS = 'VALIDE_RH'
               AND TO_CHAR(lr.START_DATE,'YYYY-MM') = TO_CHAR(SYSDATE,'YYYY-MM')
             GROUP BY td.DISPO
@@ -279,7 +279,7 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
     @Query(value = """
             WITH dispo AS (
                 SELECT COUNT(*) * 22 AS DISPO
-                FROM GERAI_USER.EMPLOYEES
+                FROM GERAI.EMPLOYEES
                 WHERE STATUS = 'ACTIF' AND DEPT_ID = :deptId
             )
             SELECT NVL(
@@ -289,8 +289,8 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
                     2
                 ), 0
             )
-            FROM GERAI_USER.LEAVE_REQUESTS lr
-            JOIN GERAI_USER.EMPLOYEES e ON lr.EMPLOYEE_ID = e.EMPLOYEE_ID, dispo d
+            FROM GERAI.LEAVE_REQUESTS lr
+            JOIN GERAI.EMPLOYEES e ON lr.EMPLOYEE_ID = e.EMPLOYEE_ID, dispo d
             WHERE lr.STATUS = 'VALIDE_RH'
               AND e.DEPT_ID = :deptId
               AND TO_CHAR(lr.START_DATE,'YYYY-MM') = TO_CHAR(SYSDATE,'YYYY-MM')
@@ -318,9 +318,9 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
                 NVL(lr.REASON, '-')                                     AS MOTIF,
                 NVL(lr.REJECTION_REASON, '-')                           AS COMMENTAIRE_RH,
                 TO_CHAR(lr.CREATED_AT, 'DD/MM/YYYY HH24:MI')           AS DATE_CREATION
-            FROM GERAI_USER.LEAVE_REQUESTS lr
-            JOIN      GERAI_USER.EMPLOYEES   e ON lr.EMPLOYEE_ID = e.EMPLOYEE_ID
-            LEFT JOIN GERAI_USER.DEPARTMENTS d ON e.DEPT_ID      = d.DEPT_ID
+            FROM GERAI.LEAVE_REQUESTS lr
+            JOIN      GERAI.EMPLOYEES   e ON lr.EMPLOYEE_ID = e.EMPLOYEE_ID
+            LEFT JOIN GERAI.DEPARTMENTS d ON e.DEPT_ID      = d.DEPT_ID
             ORDER BY lr.CREATED_AT DESC
             """, nativeQuery = true)
     List<Object[]> listeCongesForReport();
@@ -338,9 +338,9 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
                 NVL(lr.REASON, '-')                                     AS MOTIF,
                 NVL(lr.REJECTION_REASON, '-')                           AS COMMENTAIRE_RH,
                 TO_CHAR(lr.CREATED_AT, 'DD/MM/YYYY HH24:MI')           AS DATE_CREATION
-            FROM GERAI_USER.LEAVE_REQUESTS lr
-            JOIN GERAI_USER.EMPLOYEES   e ON lr.EMPLOYEE_ID = e.EMPLOYEE_ID
-            JOIN GERAI_USER.DEPARTMENTS d ON e.DEPT_ID      = d.DEPT_ID
+            FROM GERAI.LEAVE_REQUESTS lr
+            JOIN GERAI.EMPLOYEES   e ON lr.EMPLOYEE_ID = e.EMPLOYEE_ID
+            JOIN GERAI.DEPARTMENTS d ON e.DEPT_ID      = d.DEPT_ID
             WHERE d.DEPT_ID = :deptId
             ORDER BY lr.CREATED_AT DESC
             """, nativeQuery = true)
@@ -366,9 +366,9 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
                 NVL(tr.ESTIMATED_COST, 0)                               AS ESTIMATED_COST,
                 tr.STATUS                                               AS STATUT,
                 TO_CHAR(tr.CREATED_AT, 'DD/MM/YYYY HH24:MI')           AS DATE_CREATION
-            FROM GERAI_USER.TRAINING_REQUESTS tr
-            JOIN      GERAI_USER.EMPLOYEES   e ON tr.EMPLOYEE_ID = e.EMPLOYEE_ID
-            LEFT JOIN GERAI_USER.DEPARTMENTS d ON e.DEPT_ID      = d.DEPT_ID
+            FROM GERAI.TRAINING_REQUESTS tr
+            JOIN      GERAI.EMPLOYEES   e ON tr.EMPLOYEE_ID = e.EMPLOYEE_ID
+            LEFT JOIN GERAI.DEPARTMENTS d ON e.DEPT_ID      = d.DEPT_ID
             ORDER BY tr.CREATED_AT DESC
             """, nativeQuery = true)
     List<Object[]> listeFormationsForReport();
@@ -386,9 +386,9 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
                 NVL(tr.ESTIMATED_COST, 0)                               AS ESTIMATED_COST,
                 tr.STATUS                                               AS STATUT,
                 TO_CHAR(tr.CREATED_AT, 'DD/MM/YYYY HH24:MI')           AS DATE_CREATION
-            FROM GERAI_USER.TRAINING_REQUESTS tr
-            JOIN GERAI_USER.EMPLOYEES   e ON tr.EMPLOYEE_ID = e.EMPLOYEE_ID
-            JOIN GERAI_USER.DEPARTMENTS d ON e.DEPT_ID      = d.DEPT_ID
+            FROM GERAI.TRAINING_REQUESTS tr
+            JOIN GERAI.EMPLOYEES   e ON tr.EMPLOYEE_ID = e.EMPLOYEE_ID
+            JOIN GERAI.DEPARTMENTS d ON e.DEPT_ID      = d.DEPT_ID
             WHERE d.DEPT_ID = :deptId
             ORDER BY tr.CREATED_AT DESC
             """, nativeQuery = true)
@@ -404,7 +404,7 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
                 NVL(STATUT,'-')                             AS STATUT_VAL,
                 TO_CHAR(DATE_CREATION,'DD/MM/YYYY')         AS DATE_CREATION,
                 NVL(DESCRIPTION,'-')                        AS DESCRIPTION
-            FROM GERAI_USER.V_ALL_DEMANDES
+            FROM GERAI.V_ALL_DEMANDES
             WHERE EMPLOYE_ID = :employeeId
             ORDER BY DATE_CREATION DESC NULLS LAST
             """, nativeQuery = true)
@@ -421,11 +421,11 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
                 NVL(SUM(CASE WHEN v.TYPE='CONGE'     THEN 1 ELSE 0 END),0)     AS NB_CONGES,
                 NVL(SUM(CASE WHEN v.TYPE='FORMATION' THEN 1 ELSE 0 END),0)     AS NB_FORMATIONS,
                 COUNT(DISTINCT p.PROJECT_ID)                                    AS NB_PROJETS
-            FROM GERAI_USER.DEPARTMENTS dep
-            LEFT JOIN GERAI_USER.EMPLOYEES      e ON e.DEPT_ID    = dep.DEPT_ID
+            FROM GERAI.DEPARTMENTS dep
+            LEFT JOIN GERAI.EMPLOYEES      e ON e.DEPT_ID    = dep.DEPT_ID
                                                  AND e.STATUS     = 'ACTIF'
-            LEFT JOIN GERAI_USER.V_ALL_DEMANDES v ON v.EMPLOYE_ID = e.EMPLOYEE_ID
-            LEFT JOIN GERAI_USER.PROJECTS       p ON p.DEPT_ID    = dep.DEPT_ID
+            LEFT JOIN GERAI.V_ALL_DEMANDES v ON v.EMPLOYE_ID = e.EMPLOYEE_ID
+            LEFT JOIN GERAI.PROJECTS       p ON p.DEPT_ID    = dep.DEPT_ID
                                                  AND p.STATUS     = 'EN_COURS'
             GROUP BY dep.DEPT_ID, dep.NAME
             ORDER BY dep.NAME
@@ -443,9 +443,9 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
                     NVL(e.FIRST_NAME,'') || ' ' || NVL(e.LAST_NAME,'')   AS NOM,
                     NVL(d.NAME,'Non défini')                              AS DEPARTEMENT,
                     NVL(SUM(lr.DAYS_COUNT), 0)                            AS TOTAL_JOURS
-                FROM GERAI_USER.LEAVE_REQUESTS lr
-                JOIN      GERAI_USER.EMPLOYEES   e ON lr.EMPLOYEE_ID = e.EMPLOYEE_ID
-                LEFT JOIN GERAI_USER.DEPARTMENTS d ON e.DEPT_ID      = d.DEPT_ID
+                FROM GERAI.LEAVE_REQUESTS lr
+                JOIN      GERAI.EMPLOYEES   e ON lr.EMPLOYEE_ID = e.EMPLOYEE_ID
+                LEFT JOIN GERAI.DEPARTMENTS d ON e.DEPT_ID      = d.DEPT_ID
                 WHERE lr.STATUS = 'VALIDE_RH'
                   AND TO_CHAR(lr.START_DATE,'YYYY') = TO_CHAR(SYSDATE,'YYYY')
                 GROUP BY e.EMPLOYEE_ID, e.FIRST_NAME, e.LAST_NAME, d.NAME
@@ -472,9 +472,9 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
                     NVL(e.FIRST_NAME,'') || ' ' || NVL(e.LAST_NAME,'')   AS NOM,
                     NVL(d.NAME,'Non défini')                              AS DEPARTEMENT,
                     NVL(SUM(lr.DAYS_COUNT), 0)                            AS TOTAL_JOURS
-                FROM GERAI_USER.LEAVE_REQUESTS lr
-                JOIN GERAI_USER.EMPLOYEES   e ON lr.EMPLOYEE_ID = e.EMPLOYEE_ID
-                JOIN GERAI_USER.DEPARTMENTS d ON e.DEPT_ID      = d.DEPT_ID
+                FROM GERAI.LEAVE_REQUESTS lr
+                JOIN GERAI.EMPLOYEES   e ON lr.EMPLOYEE_ID = e.EMPLOYEE_ID
+                JOIN GERAI.DEPARTMENTS d ON e.DEPT_ID      = d.DEPT_ID
                 WHERE lr.STATUS = 'VALIDE_RH'
                   AND d.DEPT_ID = :deptId
                   AND TO_CHAR(lr.START_DATE,'YYYY') = TO_CHAR(SYSDATE,'YYYY')
@@ -484,4 +484,64 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
             WHERE ROWNUM <= 5
             """, nativeQuery = true)
     List<Object[]> top5EmployesAbsencesParDept(@Param("deptId") Long deptId);
+
+    /* ═══════════════════════════════════════════════════════════
+       RAPPORTS — PROJETS (globaux + filtrés par département)
+       Colonnes : PROJET, CHEF_NOM, NB_MEMBRES, PROGRESSION, STATUT
+       ═══════════════════════════════════════════════════════════ */
+
+    @Query(value = """
+            SELECT
+                p.NAME                                                                  AS PROJET,
+                NVL(p.PRIORITY, 'NORMALE')                                              AS PRIORITE,
+                TO_CHAR(p.START_DATE, 'DD/MM/YYYY')                                    AS DATE_DEBUT,
+                TO_CHAR(p.END_DATE,   'DD/MM/YYYY')                                    AS DATE_FIN,
+                COUNT(DISTINCT pm.EMPLOYEE_ID)                                          AS NB_MEMBRES,
+                COUNT(DISTINCT t.TASK_ID)                                               AS TOTAL_TACHES,
+                COUNT(DISTINCT CASE WHEN t.STATUS = 'TERMINE' THEN t.TASK_ID END)      AS TACHES_COMPLETEES,
+                NVL(p.PROGRESS_PCT, 0)                                                  AS PROGRESSION,
+                p.STATUS                                                                AS STATUT
+            FROM GERAI.PROJECTS p
+            LEFT JOIN GERAI.PROJECT_MEMBERS pm ON pm.PROJECT_ID = p.PROJECT_ID
+                                               AND pm.IS_ACTIVE = 1
+            LEFT JOIN GERAI.TASKS t            ON t.PROJECT_ID  = p.PROJECT_ID
+            GROUP BY p.PROJECT_ID, p.NAME, p.PRIORITY, p.START_DATE, p.END_DATE,
+                     p.PROGRESS_PCT, p.STATUS
+            ORDER BY CASE NVL(p.PRIORITY,'NORMALE')
+                         WHEN 'CRITIQUE' THEN 1 WHEN 'HAUTE' THEN 2
+                         WHEN 'NORMALE'  THEN 3 ELSE 4 END, p.NAME
+            """, nativeQuery = true)
+    List<Object[]> listeProjetsForReport();
+
+    @Query(value = """
+            SELECT
+                p.NAME                                                                  AS PROJET,
+                NVL(p.PRIORITY, 'NORMALE')                                              AS PRIORITE,
+                TO_CHAR(p.START_DATE, 'DD/MM/YYYY')                                    AS DATE_DEBUT,
+                TO_CHAR(p.END_DATE,   'DD/MM/YYYY')                                    AS DATE_FIN,
+                COUNT(DISTINCT pm.EMPLOYEE_ID)                                          AS NB_MEMBRES,
+                COUNT(DISTINCT t.TASK_ID)                                               AS TOTAL_TACHES,
+                COUNT(DISTINCT CASE WHEN t.STATUS = 'TERMINE' THEN t.TASK_ID END)      AS TACHES_COMPLETEES,
+                NVL(p.PROGRESS_PCT, 0)                                                  AS PROGRESSION,
+                p.STATUS                                                                AS STATUT
+            FROM GERAI.PROJECTS p
+            LEFT JOIN GERAI.PROJECT_MEMBERS pm ON pm.PROJECT_ID = p.PROJECT_ID
+                                               AND pm.IS_ACTIVE = 1
+            LEFT JOIN GERAI.TASKS t            ON t.PROJECT_ID  = p.PROJECT_ID
+            WHERE p.CREATED_BY = :employeeId
+            GROUP BY p.PROJECT_ID, p.NAME, p.PRIORITY, p.START_DATE, p.END_DATE,
+                     p.PROGRESS_PCT, p.STATUS
+            ORDER BY CASE NVL(p.PRIORITY,'NORMALE')
+                         WHEN 'CRITIQUE' THEN 1 WHEN 'HAUTE' THEN 2
+                         WHEN 'NORMALE'  THEN 3 ELSE 4 END, p.NAME
+            """, nativeQuery = true)
+    List<Object[]> listeProjetsParCreateur(@Param("employeeId") Long employeeId);
+
+    @Query(value = """
+            SELECT EMPLOYEE_ID
+            FROM GERAI.EMPLOYEES
+            WHERE EMAIL = :email
+              AND STATUS = 'ACTIF'
+            """, nativeQuery = true)
+    Long findEmployeeIdByEmail(@Param("email") String email);
 }

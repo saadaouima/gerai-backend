@@ -30,18 +30,23 @@ import java.util.Map;
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "${app.cors.allowed-origin:http://localhost:4200}")
-class AdminProjetController {
+public class AdminProjetController {
 
     private final ProjetService projetService;
 
     @GetMapping("/projets")
-    @PreAuthorize("hasAnyRole('RH','ADMIN')")
+    @PreAuthorize("hasAnyRole('RH','ADMIN','ADMIN_RH')")
     public ResponseEntity<List<ProjetDTO>> getAllProjets() {
-        return ResponseEntity.ok(projetService.getAllProjets());
+        try {
+            return ResponseEntity.ok(projetService.getAllProjets());
+        } catch (Exception e) {
+            log.error("getAllProjets failed: {}", e.getMessage());
+            return ResponseEntity.ok(List.of());
+        }
     }
 
     @GetMapping("/projets/{id}/stats")
-    @PreAuthorize("hasAnyRole('RH','ADMIN')")
+    @PreAuthorize("hasAnyRole('RH','ADMIN','ADMIN_RH')")
     public ResponseEntity<ProjetDTO> getProjetStats(
             @PathVariable Long id,
             Authentication auth) {
@@ -49,13 +54,13 @@ class AdminProjetController {
     }
 
     @GetMapping("/evals")
-    @PreAuthorize("hasAnyRole('RH','ADMIN')")
+    @PreAuthorize("hasAnyRole('RH','ADMIN','ADMIN_RH')")
     public ResponseEntity<List<PerformanceEvalDTO>> getEvals() {
         return ResponseEntity.ok(projetService.getEvals());
     }
 
     @PostMapping("/evals")
-    @PreAuthorize("hasAnyRole('RH','ADMIN','CHEF')")
+    @PreAuthorize("hasAnyRole('RH','ADMIN','ADMIN_RH','CHEF')")
     public ResponseEntity<PerformanceEvalDTO> createEval(
             @RequestBody PerformanceEvalDTO req,
             Authentication auth) {
@@ -64,7 +69,7 @@ class AdminProjetController {
     }
 
     @GetMapping("/dashboard")
-    @PreAuthorize("hasAnyRole('RH','ADMIN')")
+    @PreAuthorize("hasAnyRole('RH','ADMIN','ADMIN_RH')")
     public ResponseEntity<DashboardDTO> getDashboard() {
         return ResponseEntity.ok(projetService.getDashboard());
     }

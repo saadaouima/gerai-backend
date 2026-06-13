@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
               xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports
@@ -56,10 +56,10 @@
             <rectangle><reportElement mode="Opaque" x="357" y="0" width="178" height="4" backcolor="#7B1FA2"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
 
             <rectangle><reportElement mode="Opaque" x="14" y="10" width="56" height="18" backcolor="#00BCD4"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
-            <staticText><reportElement x="14" y="10" width="56" height="18" forecolor="#0A1929"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="10" isBold="true"/></textElement><text><![CDATA[GerAI]]></text></staticText>
+            <staticText><reportElement x="14" y="10" width="56" height="18" forecolor="#0A1929"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="10" isBold="true"/></textElement><text><![CDATA[SYNAPSE]]></text></staticText>
 
             <staticText><reportElement x="14" y="32" width="420" height="22" forecolor="#FFFFFF"/><textElement verticalAlignment="Middle"><font fontName="SansSerif" size="16" isBold="true"/></textElement><text><![CDATA[Tableau de Bord RH]]></text></staticText>
-            <staticText><reportElement x="14" y="55" width="300" height="12" forecolor="#80DEEA"/><textElement><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[Indicateurs Ressources Humaines – GerAI]]></text></staticText>
+            <staticText><reportElement x="14" y="55" width="300" height="12" forecolor="#80DEEA"/><textElement><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[Indicateurs Ressources Humaines – SYNAPSE]]></text></staticText>
             <textField><reportElement x="320" y="55" width="211" height="12" forecolor="#4DD0E1"/><textElement textAlignment="Right"><font fontName="SansSerif" size="7"/></textElement><textFieldExpression><![CDATA["Généré le : " + $P{GENERATED_DATE} + "  |  " + $P{REPORT_PERIOD}]]></textFieldExpression></textField>
 
             <rectangle><reportElement mode="Opaque" x="0"   y="82" width="126" height="90" backcolor="#0D2A4E"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
@@ -135,7 +135,7 @@
     <pageFooter>
         <band height="16">
             <line><reportElement x="0" y="0" width="535" height="1" forecolor="#1565C0"/><graphicElement><pen lineWidth="0.5"/></graphicElement></line>
-            <staticText><reportElement x="0" y="2" width="220" height="12" forecolor="#90A4AE"/><textElement><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[GerAI – Dashboard RH]]></text></staticText>
+            <staticText><reportElement x="0" y="2" width="220" height="12" forecolor="#90A4AE"/><textElement><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[SYNAPSE – Dashboard RH]]></text></staticText>
             <textField><reportElement x="220" y="2" width="196" height="12" forecolor="#90A4AE"/><textElement textAlignment="Center"><font fontName="SansSerif" size="7"/></textElement><textFieldExpression><![CDATA["Généré le " + $P{GENERATED_DATE}]]></textFieldExpression></textField>
             <textField><reportElement x="455" y="2" width="80"  height="12" forecolor="#90A4AE"/><textElement textAlignment="Right"><font fontName="SansSerif" size="7"/></textElement><textFieldExpression><![CDATA["Page " + $V{PAGE_NUMBER}]]></textFieldExpression></textField>
         </band>
@@ -152,9 +152,9 @@
             <line><reportElement x="0" y="26" width="535" height="1" forecolor="#1565C0"/><graphicElement><pen lineWidth="1.5"/></graphicElement></line>
             <rectangle><reportElement mode="Opaque" x="0" y="30" width="535" height="32" backcolor="#050E1A"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
             <rectangle><reportElement mode="Opaque" x="0" y="30" width="4"   height="32" backcolor="#00BCD4"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
-            <staticText><reportElement x="12" y="34" width="320" height="11" forecolor="#80DEEA"/><textElement><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[GerAI – Tableau de Bord Ressources Humaines – Document confidentiel]]></text></staticText>
+            <staticText><reportElement x="12" y="34" width="320" height="11" forecolor="#80DEEA"/><textElement><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[SYNAPSE – Tableau de Bord Ressources Humaines – Document confidentiel]]></text></staticText>
             <textField><reportElement x="12" y="47" width="300" height="11" forecolor="#4DD0E1"/><textElement><font fontName="SansSerif" size="7"/></textElement><textFieldExpression><![CDATA["Exporté le : " + $P{GENERATED_DATE}]]></textFieldExpression></textField>
-            <staticText><reportElement x="390" y="47" width="141" height="11" forecolor="#4DD0E1"/><textElement textAlignment="Right"><font fontName="SansSerif" size="7" isItalic="true"/></textElement><text><![CDATA[© GerAI – Tous droits réservés]]></text></staticText>
+            <staticText><reportElement x="390" y="47" width="141" height="11" forecolor="#4DD0E1"/><textElement textAlignment="Right"><font fontName="SansSerif" size="7" isItalic="true"/></textElement><text><![CDATA[© SYNAPSE – Tous droits réservés]]></text></staticText>
         </band>
     </summary>
 

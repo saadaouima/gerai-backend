@@ -11,4 +11,10 @@ public class EmployeDTO {
     private String poste;
     private String departement;
     private String nomComplet;
+    private String telephone;
+    private String statut;
+    private String dateEmbauche;
+    private String photo;
+    private Long   projetId;
+    private String projetNom;
 }

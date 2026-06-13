@@ -51,11 +51,17 @@ public class DemandeResponse {
     private LocalDate     plannedDate;
     private Integer       durationDays;
 
-    /* ── PRÊT ─────────────────────────────────────────── */
+    /* ── CRÉDIT (LOAN_REQUESTS) ───────────────────────── */
     private BigDecimal    amount;
     private String        currency;
     private Integer       durationMonths;
     private BigDecimal    monthlyPayment;
+    private BigDecimal    montantApprouve;
+    private Integer       nbTranches;
+    private BigDecimal    montantTranche;
+    private Long          dgApprovedBy;
+    private LocalDateTime dgDecisionAt;
+    private String        dgComment;
 
     /* ── DOCUMENT ─────────────────────────────────────── */
     private Long          docTypeId;
@@ -69,4 +75,35 @@ public class DemandeResponse {
     private LocalDateTime startDatetime;
     private LocalDateTime endDatetime;
     private BigDecimal    durationHours;
+
+    /* ── Angular-compatible field names ──────────────── */
+    private Long    id;               // = requestId
+    private String  employeId;        // = employeeId as string
+    private String  employePrenom;
+    private String  employeInitiales;
+    private String  employePhoto;
+    private String  description;      // composite per type
+    private String  dateCreation;     // = createdAt ISO string
+    private String  dateDebut;        // = startDate / plannedDate
+    private String  dateFin;          // = endDate
+    private Integer joursOuvres;      // = daysCount / durationDays
+    private String  validePar;           // = approvedBy as string (chef)
+    private String  validateurNom;       // last actor name (backward compat)
+    private String  validateurNomChef;   // resolved from approvedBy (chef step)
+    private String  validateurNomDg;     // resolved from dgApprovedByName (committee/DG step)
+    private String  validateurNomRh;     // resolved from approvedByRh (RH step)
+    private String  dateValidation;      // = approvedAt ISO string (chef)
+    private String  dateValidationDg;    // = dgDecisionAt ISO string (committee/DG step)
+    private String  dateValidationRh;    // = approvedAtRh ISO string (RH)
+    private String  commentaireChef;
+    private String  commentaireRh;    // = rejectionReason
+
+    /* ── Congé spécifique ────────────────────────────── */
+    private Boolean  halfSalary;
+    private Boolean  medApproved;
+    private String   medComment;
+    private String   dateValidationMed;
+
+    /** Code du type de congé (MALADIE, ANNUEL, FAMILIAL…) pour le rendu frontend */
+    private String   leaveTypeName;
 }

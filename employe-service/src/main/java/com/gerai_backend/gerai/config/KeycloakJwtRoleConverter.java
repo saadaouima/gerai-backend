@@ -21,7 +21,9 @@ public class KeycloakJwtRoleConverter implements Converter<Jwt, Collection<Grant
 
     private static final Logger log = LoggerFactory.getLogger(KeycloakJwtRoleConverter.class);
 
-    @Value("${spring.security.oauth2.client.registration.keycloak.client-id}")
+    // Default to synapse-frontend — must match the Angular PKCE client in Keycloak
+    // so resource_access.synapse-frontend.roles is correctly extracted from the JWT
+    @Value("${spring.security.oauth2.client.registration.keycloak.client-id:synapse-frontend}")
     private String clientId;
 
     @Override
@@ -34,13 +36,14 @@ public class KeycloakJwtRoleConverter implements Converter<Jwt, Collection<Grant
         allRoles.addAll(clientRoles);
         allRoles.addAll(realmRoles);
 
-        log.info(">>> roles extracted: {}", allRoles.stream()
+        log.debug("Roles extracted from JWT: {}", allRoles.stream()
                 .map(GrantedAuthority::getAuthority)
                 .collect(Collectors.joining(", ")));
 
         return allRoles;
     }
 
+    @SuppressWarnings("unchecked")
     private Collection<GrantedAuthority> extractClientRoles(Jwt jwt) {
         Map<String, Object> resourceAccess = jwt.getClaim("resource_access");
         if (resourceAccess == null || !resourceAccess.containsKey(clientId)) {
@@ -57,6 +60,7 @@ public class KeycloakJwtRoleConverter implements Converter<Jwt, Collection<Grant
                 .collect(Collectors.toList());
     }
 
+    @SuppressWarnings("unchecked")
     private Collection<GrantedAuthority> extractRealmRoles(Jwt jwt) {
         Map<String, Object> realmAccess = jwt.getClaim("realm_access");
         if (realmAccess == null) return Collections.emptyList();

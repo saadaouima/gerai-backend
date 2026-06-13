@@ -21,11 +21,15 @@ public class WebSocketNotificationService {
             return;
         }
 
+        // Primary: user-queue channel — requires STOMP session principal to match userId
         messagingTemplate.convertAndSendToUser(
                 userId,
                 "/queue/notifications",
                 payload
         );
+
+        // Fallback: per-employee topic — always delivered regardless of principal setup
+        messagingTemplate.convertAndSend("/topic/employee." + userId, payload);
 
         log.info("[WebSocket] 📡 Notification envoyée à l'utilisateur {}", userId);
     }
@@ -40,8 +44,9 @@ public class WebSocketNotificationService {
             return;
         }
 
+        // Must match frontend: this.stomp.watch(`/topic/notifications.${role.toLowerCase()}`)
         messagingTemplate.convertAndSend(
-                "/topic/role/" + role.toUpperCase(),
+                "/topic/notifications." + role.toLowerCase(),
                 payload
         );
 

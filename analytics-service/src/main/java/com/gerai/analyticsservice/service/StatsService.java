@@ -40,11 +40,17 @@ public class StatsService {
     @Transactional(readOnly = true)
     public DashboardSummaryDTO getDashboard(Authentication auth) {
         log.debug("[Stats] getDashboard | rôle={}", jwt.getPrimaryRole(auth));
-
-        if (jwt.isChef(auth)) {
-            return buildDashboardChef(auth);
+        try {
+            if (jwt.isChef(auth)) return buildDashboardChef(auth);
+            return buildDashboardGlobal();
+        } catch (Exception e) {
+            log.error("[Stats] getDashboard error: {}", e.getMessage());
+            return DashboardSummaryDTO.builder()
+                    .demandesParType(new LinkedHashMap<>())
+                    .demandesParStatut(new LinkedHashMap<>())
+                    .demandesParMois(new LinkedHashMap<>())
+                    .build();
         }
-        return buildDashboardGlobal();
     }
 
     private DashboardSummaryDTO buildDashboardGlobal() {
@@ -113,23 +119,28 @@ public class StatsService {
     @Cacheable("conge-stats")
     @Transactional(readOnly = true)
     public CongeStatsDTO getCongeStats() {
-        long total     = repo.countTotalConges();
-        long valides   = repo.countCongesValides();
-        long refuses   = repo.countCongesRefuses();
-        long enAttente = repo.countCongesEnAttente();
-        Double avg     = repo.avgJoursConge();
+        try {
+            long total     = repo.countTotalConges();
+            long valides   = repo.countCongesValides();
+            long refuses   = repo.countCongesRefuses();
+            long enAttente = repo.countCongesEnAttente();
+            Double avg     = repo.avgJoursConge();
 
-        return CongeStatsDTO.builder()
-                .totalConges(total)
-                .congesValides(valides)
-                .congesRefuses(refuses)
-                .congesEnAttente(enAttente)
-                .moyenneJours(avg != null ? round2(avg) : 0.0)
-                .tauxAcceptation(total > 0 ? round2((valides * 100.0) / total) : 0)
-                .tauxRejet(total > 0 ? round2((refuses * 100.0) / total) : 0)
-                .congesParMois(toMap(repo.countCongesGroupByMois()))
-                .congesParType(new LinkedHashMap<>())
-                .build();
+            return CongeStatsDTO.builder()
+                    .totalConges(total)
+                    .congesValides(valides)
+                    .congesRefuses(refuses)
+                    .congesEnAttente(enAttente)
+                    .moyenneJours(avg != null ? round2(avg) : 0.0)
+                    .tauxAcceptation(total > 0 ? round2((valides * 100.0) / total) : 0)
+                    .tauxRejet(total > 0 ? round2((refuses * 100.0) / total) : 0)
+                    .congesParMois(toMap(repo.countCongesGroupByMois()))
+                    .congesParType(new LinkedHashMap<>())
+                    .build();
+        } catch (Exception e) {
+            log.error("[Stats] getCongeStats error: {}", e.getMessage());
+            return new CongeStatsDTO();
+        }
     }
 
     /* ═══════════════════════════════════════════════════════
@@ -139,22 +150,27 @@ public class StatsService {
     @Cacheable("formation-stats")
     @Transactional(readOnly = true)
     public FormationStatsDTO getFormationStats() {
-        long total     = repo.countTotalFormations();
-        long validees  = repo.countFormationsValidees();
-        long refuses   = repo.countFormationsRefusees();
-        long enAttente = repo.countFormationsEnAttente();
+        try {
+            long total     = repo.countTotalFormations();
+            long validees  = repo.countFormationsValidees();
+            long refuses   = repo.countFormationsRefusees();
+            long enAttente = repo.countFormationsEnAttente();
 
-        return FormationStatsDTO.builder()
-                .totalFormations(total)
-                .formationsValidees(validees)
-                .formationsRefusees(refuses)
-                .formationsEnAttente(enAttente)
-                .budgetTotal(round2(repo.sumBudgetFormations()))
-                .moyenneDureeJours(round2(repo.avgDureeFormations()))
-                .tauxValidation(total > 0 ? round2((validees * 100.0) / total) : 0)
-                .formationsParMois(toMap(repo.countFormationsGroupByMois()))
-                .formationsParType(new LinkedHashMap<>())
-                .build();
+            return FormationStatsDTO.builder()
+                    .totalFormations(total)
+                    .formationsValidees(validees)
+                    .formationsRefusees(refuses)
+                    .formationsEnAttente(enAttente)
+                    .budgetTotal(round2(repo.sumBudgetFormations()))
+                    .moyenneDureeJours(round2(repo.avgDureeFormations()))
+                    .tauxValidation(total > 0 ? round2((validees * 100.0) / total) : 0)
+                    .formationsParMois(toMap(repo.countFormationsGroupByMois()))
+                    .formationsParType(new LinkedHashMap<>())
+                    .build();
+        } catch (Exception e) {
+            log.error("[Stats] getFormationStats error: {}", e.getMessage());
+            return new FormationStatsDTO();
+        }
     }
 
     /* ═══════════════════════════════════════════════════════
@@ -186,6 +202,12 @@ public class StatsService {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getCongesForReport(Long deptIdFromUrl,
                                                         Authentication auth) {
+        try { return getCongesForReportInternal(deptIdFromUrl, auth); }
+        catch (Exception e) { log.error("[Stats] getCongesForReport error: {}", e.getMessage()); return List.of(); }
+    }
+
+    private List<Map<String, Object>> getCongesForReportInternal(Long deptIdFromUrl,
+                                                                  Authentication auth) {
         List<Object[]> rows;
 
         if (jwt.isChef(auth)) {
@@ -220,6 +242,12 @@ public class StatsService {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getFormationsForReport(Long deptIdFromUrl,
                                                             Authentication auth) {
+        try { return getFormationsForReportInternal(deptIdFromUrl, auth); }
+        catch (Exception e) { log.error("[Stats] getFormationsForReport error: {}", e.getMessage()); return List.of(); }
+    }
+
+    private List<Map<String, Object>> getFormationsForReportInternal(Long deptIdFromUrl,
+                                                                      Authentication auth) {
         List<Object[]> rows;
 
         if (jwt.isChef(auth)) {
@@ -242,6 +270,39 @@ public class StatsService {
                 "REQUEST_ID","EMPLOYE_NOM","MATRICULE","DEPARTEMENT",
                 "TRAINING_TITLE","PROVIDER","PLANNED_DATE",
                 "DURATION_DAYS","ESTIMATED_COST","STATUT","DATE_CREATION");
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       DONNÉES RAPPORT — PROJETS
+       ═══════════════════════════════════════════════════════ */
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getProjetsForReport(Long deptIdFromUrl,
+                                                         Authentication auth) {
+        try { return getProjetsForReportInternal(deptIdFromUrl, auth); }
+        catch (Exception e) { log.error("[Stats] getProjetsForReport error: {}", e.getMessage()); return List.of(); }
+    }
+
+    private List<Map<String, Object>> getProjetsForReportInternal(Long deptIdFromUrl,
+                                                                   Authentication auth) {
+        List<Object[]> rows;
+
+        if (jwt.isChef(auth)) {
+            Long employeeId = resolveEmployeeId(auth);
+            log.info("[Stats] Projets rapport Chef | employeeId={}", employeeId);
+            rows = employeeId != null
+                    ? repo.listeProjetsParCreateur(employeeId)
+                    : repo.listeProjetsForReport();
+
+        } else {
+            log.info("[Stats] Projets rapport RH global");
+            rows = repo.listeProjetsForReport();
+        }
+
+        return rowsToMaps(rows,
+                "PROJET", "PRIORITE", "DATE_DEBUT", "DATE_FIN",
+                "NB_MEMBRES", "TOTAL_TACHES", "TACHES_COMPLETEES",
+                "PROGRESSION", "STATUT");
     }
 
     /* ═══════════════════════════════════════════════════════
@@ -367,6 +428,21 @@ public class StatsService {
         }
 
         log.warn("[Stats] Impossible de résoudre dept_id pour {}", auth.getName());
+        return null;
+    }
+
+    private Long resolveEmployeeId(Authentication auth) {
+        String sub = jwt.getSubject(auth);
+        if (sub != null) {
+            Long empId = repo.findEmployeeIdBySubject(sub);
+            if (empId != null) return empId;
+        }
+        String email = jwt.getEmail(auth);
+        if (email != null) {
+            Long empId = repo.findEmployeeIdByEmail(email);
+            if (empId != null) return empId;
+        }
+        log.warn("[Stats] Impossible de résoudre employee_id pour {}", auth.getName());
         return null;
     }
 
