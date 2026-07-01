@@ -13,16 +13,46 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.List;
 
+/**
+ * Configuration principale de la sécurité HTTP du microservice {@code employe-service}.
+ *
+ * <p>@Configuration + @EnableWebSecurity : active la configuration de sécurité Spring Security
+ * et remplace la configuration automatique par défaut.</p>
+ *
+ * <p>Stratégie appliquée :</p>
+ * <ul>
+ *   <li>Sessions stateless (JWT uniquement — pas de session HTTP côté serveur)</li>
+ *   <li>CSRF désactivé (API REST consommée par Angular via Bearer token)</li>
+ *   <li>CORS configuré pour autoriser {@code http://localhost:4200}</li>
+ *   <li>Ressource OAuth2 sécurisée par validation JWT via Keycloak JWKS</li>
+ *   <li>Rôles extraits du JWT par {@link KeycloakJwtRoleConverter}</li>
+ * </ul>
+ *
+ * @since 1.0
+ */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
     private final KeycloakJwtRoleConverter keycloakJwtRoleConverter;
 
+    /**
+     * Injecte le convertisseur de rôles JWT Keycloak.
+     *
+     * @param keycloakJwtRoleConverter le convertisseur chargé d'extraire les rôles depuis le JWT
+     */
     public SecurityConfig(KeycloakJwtRoleConverter keycloakJwtRoleConverter) {
         this.keycloakJwtRoleConverter = keycloakJwtRoleConverter;
     }
 
+    /**
+     * Définit la chaîne de filtres de sécurité HTTP : règles d'autorisation par rôle,
+     * configuration OAuth2 Resource Server JWT et politique CORS/CSRF.
+     *
+     * @param http le builder de configuration de sécurité Spring Security
+     * @return la {@link SecurityFilterChain} construite
+     * @throws Exception si la configuration de sécurité échoue
+     */
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 
@@ -78,6 +108,14 @@ public class SecurityConfig {
         return http.build();
     }
 
+    /**
+     * Définit la configuration CORS autorisée pour le microservice.
+     *
+     * <p>Autorise uniquement l'origine Angular ({@code http://localhost:4200}) avec
+     * les méthodes HTTP standard et tous les en-têtes, avec support des credentials.</p>
+     *
+     * @return la source de configuration CORS appliquée à toutes les routes ({@code /**})
+     */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration cfg = new CorsConfiguration();

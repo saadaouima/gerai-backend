@@ -3,37 +3,27 @@ package com.gerai.tachesservice.event;
 import lombok.*;
 
 /**
- * Événement Kafka publié par taches-service vers notification-service.
+ * Événement Kafka publié par {@code taches-service} à destination de {@code notification-service}.
+ * <p>
+ * La structure de cet objet est identique à {@code NotificationEvent} côté notification-service,
+ * ce qui permet la désérialisation JSON sans configuration de mapping de types.
+ * <p>
+ * Scénarios couverts par les notifications :
+ * <ol>
+ *   <li><b>TACHE_ASSIGNEE</b> → notification à l'EMPLOYÉ assigné :
+ *       titre "Nouvelle tâche : {titre}", message "Vous avez été assigné(e)..."</li>
+ *   <li><b>TACHE_MODIFIEE</b> → notification à l'EMPLOYÉ si la tâche est modifiée par le chef</li>
+ *   <li><b>TACHE_CLOTUREE</b> → notification au CHEF créateur :
+ *       titre "Tâche terminée : {titre}", message "{prénom} a terminé la tâche..."</li>
+ *   <li><b>TACHE_EN_RETARD</b> → notification au CHEF si une tâche dépasse son échéance
+ *       (émise par {@code TacheOverdueScheduler})</li>
+ *   <li><b>TACHE_CREEE</b> → notification de confirmation au CHEF</li>
+ * </ol>
+ * <p>
+ * Champs mappés vers la table NOTIFICATIONS Oracle :
+ * employeeId, type, title, content, referenceId, referenceType, actionUrl.
  *
- * Structure IDENTIQUE à NotificationEvent côté notification-service
- * pour que la désérialisation JSON fonctionne sans mapping de type.
- *
- * Scénarios couverts :
- *
- *   1. TACHE_ASSIGNEE   → notification à l'EMPLOYÉ assigné
- *      titre : "Nouvelle tâche : {titre}"
- *      message : "Vous avez été assigné(e) à la tâche..."
- *
- *   2. TACHE_MODIFIEE   → notification à l'EMPLOYÉ si la tâche change
- *
- *   3. TACHE_CLOTUREE   → notification au CHEF créateur du projet
- *      titre : "Tâche terminée : {titre}"
- *      message : "{prénom} a terminé la tâche..."
- *
- *   4. TACHE_EN_RETARD  → notification au CHEF si une tâche dépasse l'échéance
- *
- *   5. TACHE_CREEE      → notification au CHEF (confirmation de création)
- *
- * Champs communs avec NotificationEvent :
- *   employeeId   → NOTIFICATIONS.employee_id (Long Oracle)
- *   type         → NOTIFICATIONS.type (CHECK Oracle)
- *   title        → NOTIFICATIONS.title
- *   content      → NOTIFICATIONS.content
- *   referenceId  → NOTIFICATIONS.reference_id (task_id en String)
- *   referenceType→ NOTIFICATIONS.reference_type
- *   actionUrl    → NOTIFICATIONS.action_url
- *   email        → pour EmailService côté notification-service
- *   sourceService→ "TACHES-SERVICE"
+ * @since 1.0
  */
 @Getter
 @Setter
@@ -44,57 +34,75 @@ import lombok.*;
 public class TacheNotificationEvent {
 
     /**
-     * ID Oracle de l'employé destinataire (EMPLOYEES.employee_id).
-     * Utilisé par notification-service pour persister et pousser via WebSocket.
+     * Identifiant Oracle de l'employé destinataire de la notification (EMPLOYEES.employee_id).
+     * Utilisé par notification-service pour persister la notification en base
+     * et la pousser via WebSocket STOMP.
      */
     private Long   employeeId;
 
     /**
-     * Adresse email du destinataire — utilisée par EmailService.
+     * Adresse email du destinataire.
+     * Transmise à {@code EmailService} côté notification-service pour l'envoi d'un email.
      */
     private String email;
 
     /**
-     * Type de notification — doit correspondre aux valeurs
-     * du CHECK Oracle sur NOTIFICATIONS.type :
-     *   NOUVELLE_DEMANDE | DEMANDE_APPROUVEE | DEMANDE_REJETEE |
-     *   NOUVEAU_MESSAGE  | RAPPEL | INFO | SYSTEME
-     *
-     * Pour les tâches on utilisera INFO (affectation) et RAPPEL (retard).
+     * Type de la notification — doit correspondre aux valeurs du CHECK Oracle
+     * sur la colonne NOTIFICATIONS.type :
+     * NOUVELLE_DEMANDE | DEMANDE_APPROUVEE | DEMANDE_REJETEE |
+     * NOUVEAU_MESSAGE | RAPPEL | INFO | SYSTEME.
+     * Pour les tâches : INFO (affectation, clôture) et RAPPEL (retard, modification).
      */
     private String type;
 
-    /** Titre de la notification affiché dans le centre de notifications Angular */
+    /**
+     * Titre court de la notification, affiché dans le centre de notifications Angular.
+     * Limité pour l'affichage dans l'interface utilisateur.
+     */
     private String title;
 
-    /** Corps complet du message */
+    /** Corps complet du message de notification, affiché au destinataire. */
     private String content;
 
     /**
-     * ID de référence de l'entité source.
-     * Ici : task_id en String (notification-service le parse en Long).
+     * Identifiant de l'entité source de la notification.
+     * Contient le {@code task_id} en format String (notification-service le parse en Long).
+     * Correspond à NOTIFICATIONS.reference_id.
      */
     private String referenceId;
 
     /**
-     * Type de l'entité référencée — ex : "TACHE"
-     * Affiché par Angular pour router vers le bon composant.
+     * Type de l'entité référencée (ex : {@code "TACHE"}).
+     * Utilisé par Angular pour router vers le bon composant lors du clic sur la notification.
+     * Correspond à NOTIFICATIONS.reference_type.
      */
     private String referenceType;
 
     /**
-     * URL Angular de l'action associée.
-     * Ex : "/chef/taches?id=42"
+     * URL Angular de l'action associée à la notification.
+     * Exemples : {@code "/chef/taches"}, {@code "/employe/taches"}.
+     * Correspond à NOTIFICATIONS.action_url.
      */
     private String actionUrl;
 
-    /** UUID Keycloak — pour le routing STOMP côté notification-service */
+    /**
+     * UUID Keycloak de l'employé destinataire (EMPLOYEES.user_id).
+     * Utilisé comme clé de routage STOMP par notification-service
+     * pour le push WebSocket vers le bon client Angular connecté.
+     */
     private String keycloakSub;
 
-    /** Service émetteur — filtrage côté consommateur */
+    /**
+     * Identifiant du service émetteur de l'événement.
+     * Valeur fixe : {@code "TACHES-SERVICE"}.
+     * Permet le filtrage et le diagnostic côté consommateur Kafka.
+     */
     @Builder.Default
     private String sourceService = "TACHES-SERVICE";
 
-    /** Rôle du destinataire : EMPLOYE | CHEF | RH */
+    /**
+     * Rôle du destinataire de la notification.
+     * Valeurs utilisées : {@code EMPLOYE} (assignation, modification) ou {@code CHEF} (clôture, retard).
+     */
     private String role;
 }

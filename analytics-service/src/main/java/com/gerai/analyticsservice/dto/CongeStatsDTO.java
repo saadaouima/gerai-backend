@@ -22,17 +22,35 @@ import java.util.Map;
 public class CongeStatsDTO {
 
     /* ── Comptages ───────────────────────────────────── */
+
+    /** Nombre total de demandes de congé toutes périodes confondues. */
     private long totalConges;
-    private long congesValides;       // statut = VALIDE_RH
-    private long congesRefuses;       // statut = REFUSE  (pas REJETE)
-    private long congesEnAttente;     // statut = EN_ATTENTE
+
+    /** Nombre de congés validés par le RH (statut = VALIDE_RH). */
+    private long congesValides;
+
+    /** Nombre de congés refusés (statut = REFUSE, non REJETE). */
+    private long congesRefuses;
+
+    /** Nombre de congés en attente de validation (statut = EN_ATTENTE). */
+    private long congesEnAttente;
 
     /* ── Indicateurs ─────────────────────────────────── */
-    private double moyenneJours;      // AVG(days_count)
-    private double tauxAcceptation;   // congesValides / total * 100
-    private double tauxRejet;         // congesRefuses / total * 100
+
+    /** Durée moyenne des congés en jours (AVG de DAYS_COUNT). */
+    private double moyenneJours;
+
+    /** Taux d'acceptation des congés en pourcentage (congesValides / total * 100). */
+    private double tauxAcceptation;
+
+    /** Taux de rejet des congés en pourcentage (congesRefuses / total * 100). */
+    private double tauxRejet;
 
     /* ── Répartitions temporelles ────────────────────── */
-    private Map<String, Long> congesParMois;  // 2026-01:3 ...
-    private Map<String, Long> congesParType;  // CONGE_ANNUEL:10 ...
+
+    /** Répartition mensuelle des congés, clé au format "YYYY-MM" (ex : 2026-01:3). */
+    private Map<String, Long> congesParMois;
+
+    /** Répartition par type de congé (ex : CONGE_ANNUEL:10). */
+    private Map<String, Long> congesParType;
 }

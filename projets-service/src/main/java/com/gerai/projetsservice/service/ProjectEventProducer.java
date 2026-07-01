@@ -8,16 +8,43 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Service;
 
+/**
+ * Producteur Kafka pour la publication d'événements de notification liés aux projets.
+ * <p>
+ * Publie des {@link NotificationEvent} sur le topic Kafka {@code notification-events}
+ * (configurable via {@code app.kafka.topic.notifications}). Supporte à la fois les
+ * notifications individuelles (par {@code employeeId}) et les broadcasts par rôle.
+ * </p>
+ * <p>
+ * {@code @Service} : composant Spring géré par le conteneur IoC.<br>
+ * {@code @Slf4j} : journalisation SLF4J via Lombok.
+ * </p>
+ *
+ * @since 1.0
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProjectEventProducer {
 
+    /** Template Kafka pour la sérialisation et l'envoi des événements JSON. */
     private final KafkaTemplate<String, NotificationEvent> kafkaTemplate;
 
+    /** Nom du topic Kafka cible (configuré via {@code app.kafka.topic.notifications}). */
     @Value("${app.kafka.topic.notifications}")
     private String topic;
 
+    /**
+     * Publie un événement de notification sur le topic Kafka.
+     * <p>
+     * La clé de partition est l'identifiant de l'employé destinataire, ou
+     * {@code role-<ROLE>} pour les broadcasts par rôle.
+     * Les événements sans destinataire ({@code employeeId} et {@code role} tous deux absents)
+     * sont ignorés avec un avertissement.
+     * </p>
+     *
+     * @param event l'événement de notification à publier
+     */
     public void emit(NotificationEvent event) {
         // Allow role-broadcast events (employeeId is null, role is set)
         if (event.getEmployeeId() == null && (event.getRole() == null || event.getRole().isBlank())) {

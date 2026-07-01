@@ -8,6 +8,7 @@ import com.gerai.chat.service.FileStorageService;
 import com.gerai.chat.service.KeycloakAdminService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
@@ -16,20 +17,37 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 import java.util.Optional;
 import java.security.Principal;
 import java.util.List;
 import java.util.Map;
 
 /**
- * ChatController adapté à la nouvelle base Oracle.
+ * Contrôleur principal de messagerie du microservice chat-service.
+ * <p>
+ * {@code @RestController} : combine {@code @Controller} et {@code @ResponseBody},
+ * toutes les méthodes retournent directement du JSON.
+ * <br>
+ * {@code @RequestMapping("/api/chat")} : préfixe commun à tous les endpoints REST de ce contrôleur.
+ * <br>
+ * {@code @RequiredArgsConstructor} (Lombok) : génère l'injection par constructeur de toutes les dépendances finales.
+ * <br>
+ * {@code @CrossOrigin} : autorise les requêtes CORS depuis le frontend Angular (configurable via propriété).
+ * <p>
+ * Ce contrôleur gère :
+ * <ul>
+ *   <li>Les conversations (liste, création directe, création de groupe).</li>
+ *   <li>Les messages REST (lecture, envoi, marquage lu, upload de fichiers).</li>
+ *   <li>Les destinations STOMP WebSocket ({@code @MessageMapping}) pour la messagerie temps réel.</li>
+ *   <li>Des endpoints alias courts utilisés par le frontend Angular.</li>
+ * </ul>
+ * <p>
+ * Identification des employés : utilise l'ID Oracle (Long) extrait du JWT via
+ * {@link #extractEmployeeId(java.security.Principal)} ou depuis le principal STOMP
+ * via {@link #extractEmployeeIdFromStomp(java.security.Principal)}.
  *
- * Changements principaux :
- *  - extractEmployeeId() extrait le claim "employee_id" (Long Oracle) du JWT
- *    au lieu de travailler avec des UUID Keycloak strings
- *  - Les endpoints REST reçoivent/retournent des Long pour les IDs
- *  - Le WebSocket utilise toujours le sub Keycloak pour le routing STOMP
- *    mais passe l'employee_id Oracle au service métier
+ * @since 1.0
  */
 @Slf4j
 @RestController
@@ -45,6 +63,13 @@ public class ChatController {
     private final ConversationParticipantRepository partRepo;
     /* ── Conversations ────────────────────────────────── */
 
+    /**
+     * Retourne la liste des conversations actives de l'employé connecté,
+     * triées par date du dernier message (plus récent en premier).
+     *
+     * @param principal le principal de sécurité JWT de l'utilisateur connecté
+     * @return {@code 200 OK} avec la liste des {@link ConversationDTO}
+     */
     @GetMapping("/conversations")
     public ResponseEntity<List<ConversationDTO>> getMesConversations(
             Principal principal) {
@@ -95,12 +120,25 @@ public class ChatController {
 
     /* ── Messages ─────────────────────────────────────── */
 
+    /**
+     * Retourne tous les messages non supprimés d'une conversation, triés chronologiquement.
+     * Déclenche également le marquage automatique comme lus des messages non lus.
+     *
+     * @param conversationId l'identifiant Oracle de la conversation
+     * @param principal      le principal de sécurité de l'utilisateur connecté
+     * @return {@code 200 OK} avec la liste des {@link MessageDTO}
+     * @throws SecurityException si l'utilisateur n'est pas participant actif de la conversation
+     */
     @GetMapping("/conversations/{conversationId}/messages")
     public ResponseEntity<List<MessageDTO>> getMessages(
             @PathVariable Long conversationId,
             Principal principal) {
         Long empId = extractEmployeeId(principal);
-        return ResponseEntity.ok(chatService.getMessages(conversationId, empId));
+        try {
+            return ResponseEntity.ok(chatService.getMessages(conversationId, empId));
+        } catch (SecurityException e) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, e.getMessage());
+        }
     }
 
     /**
@@ -129,18 +167,49 @@ public class ChatController {
         return ResponseEntity.ok(dto);
     }
 
+    /** Quitter / supprimer une conversation (soft-delete pour l'appelant). */
+    @DeleteMapping("/conversations/{conversationId}")
+    public ResponseEntity<Void> quitterConversation(
+            @PathVariable Long conversationId,
+            Principal principal) {
+        Long empId = extractEmployeeId(principal);
+        try {
+            chatService.quitterConversation(conversationId, empId);
+        } catch (SecurityException e) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, e.getMessage());
+        }
+        return ResponseEntity.noContent().build();
+    }
+
     /** Marquer une conversation comme lue */
     @PostMapping("/conversations/{conversationId}/read")
     public ResponseEntity<Void> marquerLu(
             @PathVariable Long conversationId,
             Principal principal) {
         Long empId = extractEmployeeId(principal);
-        chatService.getMessages(conversationId, empId); // déclenche le mark-as-read
+        try {
+            chatService.getMessages(conversationId, empId);
+        } catch (SecurityException e) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, e.getMessage());
+        }
         return ResponseEntity.noContent().build();
     }
 
     /* ── WebSocket ────────────────────────────────────── */
 
+    /**
+     * Reçoit un message via WebSocket STOMP et le diffuse à tous les participants.
+     * <p>
+     * {@code @MessageMapping("/chat.envoyer")} : destination STOMP complète {@code /app/chat.envoyer}.
+     * <br>
+     * {@code @Payload} : extrait le corps STOMP désérialisé en {@link EnvoiMessageDTO}.
+     * <p>
+     * Le message est persisté en base via {@link com.gerai.chat.service.ChatService#envoyerMessage},
+     * puis diffusé via topic et files personnelles par {@link #broadcastToConversation}.
+     *
+     * @param envoi     le DTO contenant conversationId, contenu, type et éventuellement replyToId
+     * @param principal le principal STOMP ({@link WebSocketAuthChannelInterceptor.StompPrincipal})
+     */
     @MessageMapping("/chat.envoyer")
     public void envoyerMessageWs(@Payload EnvoiMessageDTO envoi, Principal principal) {
 
@@ -161,6 +230,17 @@ public class ChatController {
         broadcastToConversation(envoi.getConversationId(), dto, senderId);
     }
 
+    /**
+     * Reçoit un indicateur de frappe via WebSocket STOMP et le transmet au destinataire.
+     * <p>
+     * {@code @MessageMapping("/chat.typing")} : destination STOMP complète {@code /app/chat.typing}.
+     * <p>
+     * L'indicateur est envoyé directement à l'employé destinataire via sa file personnelle
+     * {@code /user/{destinataireEmployeeId}/queue/typing}.
+     *
+     * @param typingDTO le DTO contenant conversationId, destinataireEmployeeId et l'état de frappe
+     * @param principal le principal STOMP de l'expéditeur
+     */
     @MessageMapping("/chat.typing")
     public void typing(@Payload TypingDTO typingDTO, Principal principal) {
         Long senderId = extractEmployeeIdFromStomp(principal);
@@ -172,6 +252,16 @@ public class ChatController {
 
     /* ── Upload fichier ───────────────────────────────── */
 
+    /**
+     * Téléverse un fichier (image ou document) dans une conversation et crée un message de type
+     * {@code IMAGE} ou {@code FICHIER} selon le content-type du fichier.
+     * Le fichier est stocké physiquement via {@link com.gerai.chat.service.FileStorageService}.
+     *
+     * @param conversationId l'identifiant Oracle de la conversation cible
+     * @param file           le fichier multipart à téléverser
+     * @param principal      le principal de sécurité de l'émetteur
+     * @return {@code 200 OK} avec le {@link MessageDTO} du message créé, incluant l'URL du fichier
+     */
     @PostMapping("/conversations/{conversationId}/upload")
     public ResponseEntity<MessageDTO> uploadFile(
             @PathVariable Long conversationId,
@@ -240,7 +330,11 @@ public class ChatController {
             Principal principal) {
 
         Long empId = extractEmployeeId(principal);
-        chatService.getMessages(conversationId, empId);
+        try {
+            chatService.getMessages(conversationId, empId);
+        } catch (SecurityException e) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, e.getMessage());
+        }
         return ResponseEntity.noContent().build();
     }
 

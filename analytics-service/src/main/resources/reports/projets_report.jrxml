@@ -1,0 +1,274 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports
+              http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"
+              name="projets_report"
+              pageWidth="842" pageHeight="595"
+              orientation="Landscape"
+              columnWidth="782" leftMargin="30" rightMargin="30"
+              topMargin="20" bottomMargin="20">
+
+    <property name="net.sf.jasperreports.export.xls.detect.cell.type" value="true"/>
+    <property name="net.sf.jasperreports.export.xls.remove.empty.space.between.rows" value="true"/>
+
+    <!-- ── Paramètres ──────────────────────────────────────────────────── -->
+    <parameter name="REPORT_TITLE" class="java.lang.String">
+        <defaultValueExpression><![CDATA["Rapport des Projets"]]></defaultValueExpression>
+    </parameter>
+    <parameter name="GENERATED_DATE" class="java.lang.String">
+        <defaultValueExpression><![CDATA[new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm").format(new java.util.Date())]]></defaultValueExpression>
+    </parameter>
+    <parameter name="TOTAL_PROJETS"      class="java.lang.Long">    <defaultValueExpression><![CDATA[0L]]></defaultValueExpression></parameter>
+    <parameter name="PROJETS_EN_COURS"   class="java.lang.Long">    <defaultValueExpression><![CDATA[0L]]></defaultValueExpression></parameter>
+    <parameter name="PROJETS_TERMINES"   class="java.lang.Long">    <defaultValueExpression><![CDATA[0L]]></defaultValueExpression></parameter>
+
+    <!-- ── Champs (données par ligne) ─────────────────────────────────── -->
+    <field name="PROJET"             class="java.lang.String"/>
+    <field name="PRIORITE"           class="java.lang.String"/>
+    <field name="DATE_DEBUT"         class="java.lang.String"/>
+    <field name="DATE_FIN"           class="java.lang.String"/>
+    <field name="NB_MEMBRES"         class="java.math.BigDecimal"/>
+    <field name="TOTAL_TACHES"       class="java.math.BigDecimal"/>
+    <field name="TACHES_COMPLETEES"  class="java.math.BigDecimal"/>
+    <field name="PROGRESSION"        class="java.math.BigDecimal"/>
+    <field name="STATUT"             class="java.lang.String"/>
+
+    <!-- ── Variables ──────────────────────────────────────────────────── -->
+    <variable name="rowCount" class="java.lang.Integer" calculation="Count">
+        <variableExpression><![CDATA[$F{PROJET}]]></variableExpression>
+    </variable>
+    <variable name="sumMembres" class="java.math.BigDecimal" calculation="Sum">
+        <variableExpression><![CDATA[$F{NB_MEMBRES} != null ? $F{NB_MEMBRES} : java.math.BigDecimal.ZERO]]></variableExpression>
+    </variable>
+    <variable name="sumTachesTotal" class="java.math.BigDecimal" calculation="Sum">
+        <variableExpression><![CDATA[$F{TOTAL_TACHES} != null ? $F{TOTAL_TACHES} : java.math.BigDecimal.ZERO]]></variableExpression>
+    </variable>
+    <variable name="sumTachesDone" class="java.math.BigDecimal" calculation="Sum">
+        <variableExpression><![CDATA[$F{TACHES_COMPLETEES} != null ? $F{TACHES_COMPLETEES} : java.math.BigDecimal.ZERO]]></variableExpression>
+    </variable>
+    <variable name="avgProgression" class="java.math.BigDecimal" calculation="Average">
+        <variableExpression><![CDATA[$F{PROGRESSION} != null ? $F{PROGRESSION} : java.math.BigDecimal.ZERO]]></variableExpression>
+    </variable>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         TITRE
+         ══════════════════════════════════════════════════════════════════ -->
+    <title>
+        <band height="70" splitType="Stretch">
+            <rectangle>
+                <reportElement mode="Opaque" x="0" y="0" width="782" height="70" backcolor="#00304E"/>
+                <graphicElement><pen lineWidth="0.0"/></graphicElement>
+            </rectangle>
+            <!-- barre colorée gauche -->
+            <rectangle><reportElement mode="Opaque" x="0" y="0" width="6" height="70" backcolor="#1565C0"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+
+            <!-- badge SYNAPSE -->
+            <rectangle><reportElement mode="Opaque" x="14" y="10" width="60" height="18" backcolor="#1565C0"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <staticText><reportElement x="14" y="10" width="60" height="18" forecolor="#FFFFFF"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="9" isBold="true"/></textElement><text><![CDATA[SYNAPSE]]></text></staticText>
+
+            <!-- titre principal -->
+            <textField>
+                <reportElement x="14" y="32" width="560" height="26" forecolor="#FFFFFF"/>
+                <textElement verticalAlignment="Middle"><font fontName="SansSerif" size="19" isBold="true"/></textElement>
+                <textFieldExpression><![CDATA[$P{REPORT_TITLE}]]></textFieldExpression>
+            </textField>
+            <!-- sous-titre -->
+            <staticText>
+                <reportElement x="14" y="58" width="500" height="11" forecolor="#90CAF9"/>
+                <textElement><font fontName="SansSerif" size="8"/></textElement>
+                <text><![CDATA[Suivi des projets, tâches et avancement – Ressources Humaines SYNAPSE]]></text>
+            </staticText>
+            <!-- date génération -->
+            <textField>
+                <reportElement x="560" y="58" width="218" height="11" forecolor="#90CAF9"/>
+                <textElement textAlignment="Right"><font fontName="SansSerif" size="7" isItalic="true"/></textElement>
+                <textFieldExpression><![CDATA["Généré le : " + $P{GENERATED_DATE}]]></textFieldExpression>
+            </textField>
+        </band>
+    </title>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         EN-TÊTES DE COLONNES
+         Colonnes : PROJET | PRIORITÉ | DÉBUT | FIN | ÉQUIPE | TÂCHES | PROGRESSION | STATUT
+         ══════════════════════════════════════════════════════════════════ -->
+    <columnHeader>
+        <band height="26">
+            <rectangle>
+                <reportElement mode="Opaque" x="0" y="0" width="782" height="26" backcolor="#1565C0"/>
+                <graphicElement><pen lineWidth="0.0"/></graphicElement>
+            </rectangle>
+            <rectangle><reportElement mode="Opaque" x="0" y="23" width="782" height="3" backcolor="#42A5F5"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+
+            <staticText><reportElement x="0"   y="0" width="196" height="23" forecolor="#FFFFFF"/><textElement verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><text><![CDATA[  PROJET]]></text></staticText>
+            <staticText><reportElement x="198" y="0" width="72"  height="23" forecolor="#FFFFFF"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><text><![CDATA[PRIORITÉ]]></text></staticText>
+            <staticText><reportElement x="272" y="0" width="76"  height="23" forecolor="#FFFFFF"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><text><![CDATA[DÉBUT]]></text></staticText>
+            <staticText><reportElement x="350" y="0" width="76"  height="23" forecolor="#FFFFFF"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><text><![CDATA[FIN]]></text></staticText>
+            <staticText><reportElement x="428" y="0" width="54"  height="23" forecolor="#FFFFFF"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><text><![CDATA[ÉQUIPE]]></text></staticText>
+            <staticText><reportElement x="484" y="0" width="82"  height="23" forecolor="#FFFFFF"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><text><![CDATA[TÂCHES (✓/∑)]]></text></staticText>
+            <staticText><reportElement x="568" y="0" width="82"  height="23" forecolor="#FFFFFF"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><text><![CDATA[PROGRESSION]]></text></staticText>
+            <staticText><reportElement x="652" y="0" width="130" height="23" forecolor="#FFFFFF"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement><text><![CDATA[STATUT]]></text></staticText>
+        </band>
+    </columnHeader>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         LIGNES DE DONNÉES
+         ══════════════════════════════════════════════════════════════════ -->
+    <detail>
+        <band height="22">
+            <!-- fond alterné -->
+            <rectangle>
+                <reportElement mode="Opaque" x="0" y="0" width="782" height="22" backcolor="#E3F2FD">
+                    <printWhenExpression><![CDATA[$V{rowCount} % 2 == 0]]></printWhenExpression>
+                </reportElement>
+                <graphicElement><pen lineWidth="0.0"/></graphicElement>
+            </rectangle>
+            <line><reportElement x="0" y="21" width="782" height="1" forecolor="#BBDEFB"/><graphicElement><pen lineWidth="0.5"/></graphicElement></line>
+
+            <!-- PROJET (nom en gras bleu) -->
+            <textField isBlankWhenNull="true">
+                <reportElement x="2" y="2" width="194" height="18" forecolor="#0D47A1"/>
+                <textElement verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement>
+                <textFieldExpression><![CDATA[$F{PROJET}]]></textFieldExpression>
+            </textField>
+
+            <!-- PRIORITÉ (couleur selon valeur) -->
+            <textField isBlankWhenNull="true">
+                <reportElement x="198" y="2" width="72" height="18">
+                    <printWhenExpression><![CDATA[true]]></printWhenExpression>
+                </reportElement>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font fontName="SansSerif" size="7" isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[
+                    "CRITIQUE".equals($F{PRIORITE}) ? "⬛ Critique" :
+                    "HAUTE".equals($F{PRIORITE})    ? "🟧 Haute"    :
+                    "FAIBLE".equals($F{PRIORITE})   ? "🟦 Faible"   :
+                                                      "🟩 Normale"
+                ]]></textFieldExpression>
+            </textField>
+
+            <!-- DATE DÉBUT -->
+            <textField isBlankWhenNull="true">
+                <reportElement x="272" y="2" width="76" height="18" forecolor="#37474F"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="7"/></textElement>
+                <textFieldExpression><![CDATA[$F{DATE_DEBUT} != null && !$F{DATE_DEBUT}.isEmpty() ? $F{DATE_DEBUT} : "—"]]></textFieldExpression>
+            </textField>
+
+            <!-- DATE FIN -->
+            <textField isBlankWhenNull="true">
+                <reportElement x="350" y="2" width="76" height="18" forecolor="#37474F"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="7"/></textElement>
+                <textFieldExpression><![CDATA[$F{DATE_FIN} != null && !$F{DATE_FIN}.isEmpty() ? $F{DATE_FIN} : "—"]]></textFieldExpression>
+            </textField>
+
+            <!-- ÉQUIPE (nombre de membres) -->
+            <textField isBlankWhenNull="true">
+                <reportElement x="428" y="2" width="54" height="18" forecolor="#1565C0"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="8" isBold="true"/></textElement>
+                <textFieldExpression><![CDATA[$F{NB_MEMBRES} != null ? $F{NB_MEMBRES}.intValue() + " 👤" : "—"]]></textFieldExpression>
+            </textField>
+
+            <!-- TÂCHES complétées / total -->
+            <textField isBlankWhenNull="true">
+                <reportElement x="484" y="2" width="82" height="18" forecolor="#00695C"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="7" isBold="true"/></textElement>
+                <textFieldExpression><![CDATA[
+                    ($F{TACHES_COMPLETEES} != null ? $F{TACHES_COMPLETEES}.intValue() : 0)
+                    + " / " +
+                    ($F{TOTAL_TACHES} != null ? $F{TOTAL_TACHES}.intValue() : 0)
+                ]]></textFieldExpression>
+            </textField>
+
+            <!-- PROGRESSION (%) -->
+            <textField isBlankWhenNull="true">
+                <reportElement x="568" y="2" width="82" height="18" forecolor="#1565C0"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="8" isBold="true"/></textElement>
+                <textFieldExpression><![CDATA[($F{PROGRESSION} != null ? $F{PROGRESSION}.intValue() : 0) + " %"]]></textFieldExpression>
+            </textField>
+
+            <!-- STATUT (couleur selon valeur) -->
+            <textField isBlankWhenNull="true">
+                <reportElement x="652" y="2" width="130" height="18"/>
+                <textElement textAlignment="Center" verticalAlignment="Middle">
+                    <font fontName="SansSerif" size="7" isBold="true"/>
+                </textElement>
+                <textFieldExpression><![CDATA[
+                    "EN_COURS".equals($F{STATUT})  ? "En cours"   :
+                    "TERMINE".equals($F{STATUT})   ? "Terminé"    :
+                    "PLANIFIE".equals($F{STATUT})  ? "Planifié"   :
+                    "EN_PAUSE".equals($F{STATUT})  ? "En pause"   :
+                    "ANNULE".equals($F{STATUT})    ? "Annulé"     :
+                    $F{STATUT}
+                ]]></textFieldExpression>
+            </textField>
+        </band>
+    </detail>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         PIED DE PAGE
+         ══════════════════════════════════════════════════════════════════ -->
+    <pageFooter>
+        <band height="16">
+            <line><reportElement x="0" y="0" width="782" height="1" forecolor="#1565C0"/><graphicElement><pen lineWidth="0.5"/></graphicElement></line>
+            <staticText><reportElement x="0" y="2" width="260" height="12" forecolor="#90A4AE"/><textElement><font fontName="SansSerif" size="7"/></textElement><text><![CDATA[SYNAPSE – Rapport Projets]]></text></staticText>
+            <textField><reportElement x="260" y="2" width="262" height="12" forecolor="#90A4AE"/><textElement textAlignment="Center"><font fontName="SansSerif" size="7"/></textElement><textFieldExpression><![CDATA["Généré le " + $P{GENERATED_DATE}]]></textFieldExpression></textField>
+            <textField><reportElement x="682" y="2" width="100" height="12" forecolor="#90A4AE"/><textElement textAlignment="Right"><font fontName="SansSerif" size="7"/></textElement><textFieldExpression><![CDATA["Page " + $V{PAGE_NUMBER}]]></textFieldExpression></textField>
+        </band>
+    </pageFooter>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         RÉCAPITULATIF (dernière page)
+         ══════════════════════════════════════════════════════════════════ -->
+    <summary>
+        <band height="65">
+            <line>
+                <reportElement x="0" y="4" width="782" height="1" forecolor="#1565C0"/>
+                <graphicElement><pen lineWidth="1.5"/></graphicElement>
+            </line>
+            <rectangle>
+                <reportElement mode="Opaque" x="0" y="10" width="782" height="45" backcolor="#00304E"/>
+                <graphicElement><pen lineWidth="0.0"/></graphicElement>
+            </rectangle>
+
+            <!-- KPI 1 : Total projets -->
+            <rectangle><reportElement mode="Opaque" x="14"  y="15" width="140" height="35" backcolor="#1565C0"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <staticText><reportElement x="14"  y="17" width="140" height="12" forecolor="#90CAF9"/><textElement textAlignment="Center"><font fontName="SansSerif" size="8" isBold="true"/></textElement><text><![CDATA[Total Projets]]></text></staticText>
+            <textField><reportElement x="14" y="29" width="140" height="18" forecolor="#FFFFFF"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="14" isBold="true"/></textElement><textFieldExpression><![CDATA[$V{rowCount}]]></textFieldExpression></textField>
+
+            <!-- KPI 2 : Total membres (somme équipes) -->
+            <rectangle><reportElement mode="Opaque" x="168" y="15" width="140" height="35" backcolor="#1565C0"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <staticText><reportElement x="168" y="17" width="140" height="12" forecolor="#90CAF9"/><textElement textAlignment="Center"><font fontName="SansSerif" size="8" isBold="true"/></textElement><text><![CDATA[Total Membres]]></text></staticText>
+            <textField><reportElement x="168" y="29" width="140" height="18" forecolor="#42A5F5"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="14" isBold="true"/></textElement><textFieldExpression><![CDATA[$V{sumMembres} != null ? $V{sumMembres}.intValue() : 0]]></textFieldExpression></textField>
+
+            <!-- KPI 3 : Tâches complétées / total -->
+            <rectangle><reportElement mode="Opaque" x="322" y="15" width="160" height="35" backcolor="#1565C0"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <staticText><reportElement x="322" y="17" width="160" height="12" forecolor="#90CAF9"/><textElement textAlignment="Center"><font fontName="SansSerif" size="8" isBold="true"/></textElement><text><![CDATA[Tâches Complétées / Total]]></text></staticText>
+            <textField><reportElement x="322" y="29" width="160" height="18" forecolor="#00E5FF"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="13" isBold="true"/></textElement>
+                <textFieldExpression><![CDATA[
+                    ($V{sumTachesDone} != null ? $V{sumTachesDone}.intValue() : 0)
+                    + " / " +
+                    ($V{sumTachesTotal} != null ? $V{sumTachesTotal}.intValue() : 0)
+                ]]></textFieldExpression>
+            </textField>
+
+            <!-- KPI 4 : Progression moyenne -->
+            <rectangle><reportElement mode="Opaque" x="496" y="15" width="160" height="35" backcolor="#1565C0"/><graphicElement><pen lineWidth="0.0"/></graphicElement></rectangle>
+            <staticText><reportElement x="496" y="17" width="160" height="12" forecolor="#90CAF9"/><textElement textAlignment="Center"><font fontName="SansSerif" size="8" isBold="true"/></textElement><text><![CDATA[Progression Moyenne]]></text></staticText>
+            <textField><reportElement x="496" y="29" width="160" height="18" forecolor="#00E5FF"/><textElement textAlignment="Center" verticalAlignment="Middle"><font fontName="SansSerif" size="13" isBold="true"/></textElement>
+                <textFieldExpression><![CDATA[
+                    ($V{avgProgression} != null
+                        ? String.format("%.0f", $V{avgProgression}.doubleValue())
+                        : "0") + " %"
+                ]]></textFieldExpression>
+            </textField>
+
+            <staticText>
+                <reportElement x="460" y="56" width="318" height="9" forecolor="#4DD0E1"/>
+                <textElement textAlignment="Right"><font fontName="SansSerif" size="7" isItalic="true"/></textElement>
+                <text><![CDATA[© SYNAPSE – Système de Gestion RH Intelligent  |  Document Confidentiel]]></text>
+            </staticText>
+        </band>
+    </summary>
+
+</jasperReport>

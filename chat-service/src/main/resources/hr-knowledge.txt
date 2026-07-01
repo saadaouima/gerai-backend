@@ -1,0 +1,62 @@
+=== BASE DE CONNAISSANCE RH — SYNAPSE ===
+
+-- CONGÉS --
+
+ANNUEL: 30j/an, rémunéré 100%, après 12 mois service. Report possible sur accord RH. Jours fériés pendant congé non décomptés.
+FAMILIAL: 6j/an, 100%, pour décès proche/mariage/naissance/maladie grave parent. Justificatif requis.
+HAJJ: 30j, une fois dans la carrière, confession musulmane, convocation officielle, demande 2 mois à l'avance.
+MATERNITE: 60j, pris en charge CNSS 100%, protection contre licenciement, prolongation possible sur avis médical.
+POSTNATAL: 4 mois après maternité, 50% salaire, acte de naissance requis.
+ALLAITEMENT: jusqu'à 6 mois après reprise, pauses journalières rémunérées 100%.
+SANS_SOLDE: max 3 mois/an, non rémunéré, accord hiérarchie+RH, préavis 15j, après épuisement congé annuel.
+MALADIE: selon certificat médical (à joindre sur la plateforme dans les 48h APRÈS soumission de la demande), rémunéré selon barème, renouvellement par nouveau certificat.
+LONGUE_MALADIE: après épuisement congé maladie, commission médicale, CNSS + complément employeur.
+FORMATION: durée selon formation, rémunéré si à l'initiative employeur, accord responsable+RH.
+CREATION_ENTREPRISE: jusqu'à 1 an, non rémunéré, dossier complet, demande 3 mois à l'avance, poste garanti.
+OBLIGATIONS_LEGALES: durée nécessaire, rémunéré, convocation officielle, non imputable sur congé annuel.
+NAISSANCE_PERE: quelques jours, 100%, acte de naissance dans 5j.
+RTT: récupération de temps de travail, selon accord responsable.
+
+Jours fériés Tunisie: 1 jan, 20 mars, 9 avril, 1 mai, 25 juillet, 13 août, 15 oct, 7 nov + Aïd El Fitr(2j), Aïd El Adha(2j), Mouled, Ras el Am Hijri.
+
+-- CALCUL CONGÉS --
+
+Jours calendaires: date_fin - date_debut + 1 (samedis et dimanches comptés).
+Acquisition: 30j après 12 mois. Prorata si arrivée en cours d'année: (mois_travaillés × 30) ÷ 12.
+Solde = jours acquis - jours pris. Solde négatif exceptionnel sur accord Direction.
+Jours fériés dans congé annuel: non décomptés. Ne s'applique pas aux congés maladie/sans solde.
+
+-- WORKFLOWS VALIDATION --
+
+Congé annuel/RTT/sans solde: Employé → Chef (48h) → Approuvé/Refusé.
+Congé maladie: Employé + certificat → RH valide.
+Maternité/Postnatal/Longue maladie: Employé → RH (coordination CNSS).
+Hajj/Création entreprise: Employé dossier complet → RH → Direction.
+Familial/Naissance/Obligations légales: Employé + justificatif → Chef (24h).
+Autorisation absence: Employé → Chef (24h).
+
+-- AUTORISATIONS D'ABSENCE --
+
+Absence courte (quelques heures à 2-3 jours): rendez-vous médical, démarche administrative, contrainte familiale.
+Rémunéré ou à récupérer selon accord responsable. Justificatif possible selon durée/fréquence.
+
+-- PRÊTS (CRÉDIT) --
+
+Conditions: contrat actif, mensualité ≤ 33% salaire net, pas de prêt bloquant en cours.
+Types: social/personnel, logement, scolarité, médical, véhicule, familial, lot, immobilier.
+Workflow standard: Employé → Chef (avis 48-72h) → RH (validation) → Déblocage (salaire mois suivant).
+Workflow montant élevé: Employé → Chef → Commission → Direction RH → Déblocage.
+Remboursement anticipé: sans pénalités, demande aux RH.
+Rééchelonnement: sur demande motivée, avenant validé Direction.
+Suspension: pendant congé sans solde/longue maladie, reprend à réintégration.
+Prêts par lot: collectifs (rentrée scolaire, Aïd), conditions définies à l'avance.
+
+-- DOCUMENTS ADMINISTRATIFS --
+
+Disponibles: attestation travail, attestation salaire, bulletin de paie, fiche annuelle, attestation congé, ordre de mission, certificat présence, attestation CNSS/CNAM.
+Délai: 2-5 jours ouvrables. Préciser: nombre de copies, langue (FR/AR), usage (banque, ambassade, etc.).
+
+-- CONTACT --
+
+Pour toute question non couverte: contacter le Service RH directement.
+Si une règle, montant ou procédure n'est pas mentionné ici: répondre "Je n'ai pas cette information. Veuillez contacter le service RH." Ne jamais inventer.

@@ -13,6 +13,19 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Service métier principal du microservice {@code employe-service}.
+ * Orchestre la création, la mise à jour et la suppression des employés en combinant
+ * la persistance Oracle (via {@link EmployeeRepository}), le provisionnement Keycloak
+ * (via {@link KeycloakUserService}) et la publication d'événements Kafka
+ * (via {@link EmployeeEventProducer}).
+ *
+ * <p>@Service : enregistré comme bean Spring et injecté dans {@link com.gerai_backend.gerai.controllers.EmployeeController}.</p>
+ * <p>@Transactional : les opérations de modification sont exécutées dans une transaction JPA
+ * avec rollback automatique sur exception.</p>
+ *
+ * @since 1.0
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -24,9 +37,24 @@ public class EmployeeService {
     private final EmailService               emailService;
     private final EmployeeEventProducer      employeeEventProducer;
 
-    // ─────────────────────────────────────────
-    // CREATE
-    // ─────────────────────────────────────────
+    /**
+     * Crée un nouvel employé en base Oracle et provisionne son compte Keycloak.
+     * Séquence : génération du mot de passe → création Keycloak → sauvegarde Oracle
+     * → publication Kafka → envoi email.
+     *
+     * <p>Gestion des cas particuliers :</p>
+     * <ul>
+     *   <li>Si l'email existe déjà en base ET dans Keycloak : {@link IllegalArgumentException} (doublon)</li>
+     *   <li>Si l'email existe en base mais pas dans Keycloak (compte orphelin) :
+     *       re-provisionnement Keycloak et mise à jour du lien.</li>
+     *   <li>Si la sauvegarde Oracle échoue après création Keycloak : rollback Keycloak.</li>
+     * </ul>
+     *
+     * @param request les données de l'employé à créer
+     * @return le DTO de réponse contenant l'employé créé et le mot de passe temporaire
+     * @throws IllegalArgumentException si un employé avec le même email existe déjà
+     * @throws RuntimeException         si le provisionnement Keycloak ou la sauvegarde Oracle échoue
+     */
     @Transactional
     public CreateEmployeeResponse createEmployee(CreateEmployeeRequest request) {
 
@@ -211,25 +239,36 @@ public class EmployeeService {
         }
     }
 
-    // ─────────────────────────────────────────
-    // READ ALL
-    // ─────────────────────────────────────────
+    /**
+     * Retourne la liste de tous les employés (tous statuts confondus).
+     *
+     * @return la liste complète des employés en base Oracle
+     */
     public List<Employee> getAllEmployees() {
         return employeeRepository.findAll();
     }
 
-    // ─────────────────────────────────────────
-    // READ ONE — CORRECTION : UUID → Long
-    // ─────────────────────────────────────────
+    /**
+     * Retourne un employé par son identifiant Oracle.
+     *
+     * @param id l'identifiant Oracle ({@code EMPLOYEE_ID}) de l'employé
+     * @return l'entité {@link Employee} correspondante
+     * @throws RuntimeException si aucun employé n'est trouvé avec cet identifiant
+     */
     public Employee getEmployeeById(Long id) {
         return employeeRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Employee not found with id: " + id));
     }
 
-    // ─────────────────────────────────────────
-    // UPDATE — CORRECTION : UUID → Long
-    //          champs jobTitle/salary → deptId/positionId
-    // ─────────────────────────────────────────
+    /**
+     * Met à jour les informations d'un employé existant en base Oracle.
+     * Le UUID Keycloak ({@code keycloakUserId}) n'est jamais modifié par cette méthode.
+     *
+     * @param id      l'identifiant Oracle ({@code EMPLOYEE_ID}) de l'employé à modifier
+     * @param request les nouvelles valeurs des champs de l'employé
+     * @return l'entité {@link Employee} mise à jour et persistée
+     * @throws RuntimeException si l'employé est introuvable
+     */
     @Transactional
     public Employee updateEmployee(Long id, CreateEmployeeRequest request) {
         Employee employee = getEmployeeById(id);
@@ -253,9 +292,15 @@ public class EmployeeService {
         return employeeRepository.save(employee);
     }
 
-    // ─────────────────────────────────────────
-    // DELETE — soft-delete fallback when FK constraints prevent hard delete
-    // ─────────────────────────────────────────
+    /**
+     * Supprime un employé : désactive d'abord son compte Keycloak, puis tente une suppression
+     * physique en base Oracle. En cas d'échec dû à des contraintes de clé étrangère,
+     * effectue un soft-delete en passant le statut à {@code DEMISSION}.
+     * Publie un événement Kafka dans les deux cas.
+     *
+     * @param id l'identifiant Oracle ({@code EMPLOYEE_ID}) de l'employé à supprimer
+     * @throws RuntimeException si l'employé est introuvable
+     */
     @Transactional
     public void deleteEmployee(Long id) {
         Employee employee = getEmployeeById(id);
@@ -286,23 +331,34 @@ public class EmployeeService {
         }
     }
 
-    // ─────────────────────────────────────────
-    // SEARCH BY EMAIL
-    // ─────────────────────────────────────────
+    /**
+     * Recherche un employé par son adresse email exacte.
+     *
+     * @param email l'adresse email à rechercher
+     * @return un {@link Optional} contenant l'employé si trouvé, ou vide sinon
+     */
     public Optional<Employee> getEmployeeByEmail(String email) {
         return employeeRepository.findByEmail(email);
     }
 
-    // ─────────────────────────────────────────
-    // SEARCH BY NAME / EMAIL (free text)
-    // ─────────────────────────────────────────
+    /**
+     * Recherche des employés par texte libre (prénom, nom ou email, insensible à la casse).
+     *
+     * @param q le texte à rechercher
+     * @return la liste des employés correspondants
+     */
     public List<Employee> searchByQuery(String q) {
         return employeeRepository.searchByQuery(q);
     }
 
-    // ─────────────────────────────────────────
-    // HELPER — username Keycloak (prénom.nom normalisé)
-    // ─────────────────────────────────────────
+    /**
+     * Construit un nom d'utilisateur Keycloak normalisé au format {@code prenom.nom} :
+     * suppression des accents, passage en minuscules, remplacement des espaces par des points.
+     *
+     * @param firstName le prénom de l'employé (peut être {@code null})
+     * @param lastName  le nom de famille de l'employé (peut être {@code null})
+     * @return le nom d'utilisateur Keycloak normalisé
+     */
     private String buildUsername(String firstName, String lastName) {
         java.util.function.Function<String, String> norm = s ->
             java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
@@ -313,10 +369,12 @@ public class EmployeeService {
                norm.apply(lastName  != null ? lastName  : "");
     }
 
-    // ─────────────────────────────────────────
-    // HELPER — Génération du matricule employé
-    // Format : EMP-XXXX (padé sur 4 chiffres)
-    // ─────────────────────────────────────────
+    /**
+     * Génère un matricule employé unique au format {@code EMP-XXXX} (padé sur 4 chiffres).
+     * Vérifie l'unicité en base et tente jusqu'à 1000 codes différents en cas de collision.
+     *
+     * @return un matricule employé garanti unique en base Oracle
+     */
     private String generateEmployeeCode() {
         long count = employeeRepository.count() + 1;
         String code;

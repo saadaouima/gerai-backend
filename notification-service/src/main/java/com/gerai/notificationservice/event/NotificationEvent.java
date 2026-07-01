@@ -3,9 +3,23 @@ package com.gerai.notificationservice.event;
 import lombok.*;
 
 /**
- * Événement Kafka consommé par notification-service.
- * * Note : referenceId est passé en String pour éviter les erreurs de désérialisation
- * quand les sources envoient des références alphanumériques (ex: REF-123).
+ * Objet de transfert des données d'un événement de notification consommé depuis Kafka.
+ * <p>
+ * Produit par les microservices {@code demandes-service} et {@code employe-service}
+ * et consommé par {@code notification-service} via le topic {@code notification-events}.
+ * </p>
+ * <p>
+ * {@code @Builder} (Lombok) : permet la construction fluide des instances, notamment
+ * dans les tests et dans l'endpoint de test email.<br>
+ * {@code @ToString} (Lombok) : facilite la journalisation des événements reçus.
+ * </p>
+ * <p>
+ * Le champ {@code referenceId} est de type {@link String} pour éviter les erreurs
+ * de désérialisation Jackson lorsque les producteurs envoient des références
+ * alphanumériques (ex. : {@code REF-123}).
+ * </p>
+ *
+ * @since 1.0
  */
 @Getter
 @Setter

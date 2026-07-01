@@ -1,0 +1,153 @@
+{
+  "info": {
+    "name": "employe-service",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Employees (CRUD)",
+      "item": [
+        {
+          "name": "Créer un employé",
+          "request": { "method": "POST", "url": { "raw": "http://localhost:8081/employees" }, "header": [] }
+        },
+        {
+          "name": "Lister tous les employés",
+          "request": { "method": "GET", "url": { "raw": "http://localhost:8081/employees" }, "header": [] }
+        },
+        {
+          "name": "Obtenir un employé par ID",
+          "request": { "method": "GET", "url": { "raw": "http://localhost:8081/employees/:id" }, "header": [] }
+        },
+        {
+          "name": "Modifier un employé",
+          "request": { "method": "PUT", "url": { "raw": "http://localhost:8081/employees/:id" }, "header": [] }
+        },
+        {
+          "name": "Supprimer un employé",
+          "request": { "method": "DELETE", "url": { "raw": "http://localhost:8081/employees/:id" }, "header": [] }
+        },
+        {
+          "name": "Rechercher des employés",
+          "request": { "method": "GET", "url": { "raw": "http://localhost:8081/employees/search" }, "header": [] }
+        },
+        {
+          "name": "Statistiques globales",
+          "request": { "method": "GET", "url": { "raw": "http://localhost:8081/employees/stats" }, "header": [] }
+        },
+        {
+          "name": "Statistiques par employé",
+          "request": { "method": "GET", "url": { "raw": "http://localhost:8081/employees/:id/stats" }, "header": [] }
+        }
+      ]
+    },
+    {
+      "name": "Profil Employé",
+      "item": [
+        {
+          "name": "Sync Oracle ↔ Keycloak",
+          "request": { "method": "POST", "url": { "raw": "http://localhost:8081/employe/sync" }, "header": [] }
+        },
+        {
+          "name": "Consulter son profil",
+          "request": { "method": "GET", "url": { "raw": "http://localhost:8081/employe/profil" }, "header": [] }
+        },
+        {
+          "name": "Mettre à jour son profil",
+          "request": { "method": "PUT", "url": { "raw": "http://localhost:8081/employe/profil" }, "header": [] }
+        },
+        {
+          "name": "Statistiques personnelles",
+          "request": { "method": "GET", "url": { "raw": "http://localhost:8081/employe/statistiques" }, "header": [] }
+        },
+        {
+          "name": "Performance",
+          "request": { "method": "GET", "url": { "raw": "http://localhost:8081/employe/performance" }, "header": [] }
+        },
+        {
+          "name": "Uploader photo de profil",
+          "request": { "method": "POST", "url": { "raw": "http://localhost:8081/employe/profil/photo" }, "header": [] }
+        },
+        {
+          "name": "Obtenir photo de profil",
+          "request": { "method": "GET", "url": { "raw": "http://localhost:8081/employe/profil/photo/:empId" }, "header": [] }
+        }
+      ]
+    },
+    {
+      "name": "Documents",
+      "item": [
+        {
+          "name": "Lister les documents",
+          "request": { "method": "GET", "url": { "raw": "http://localhost:8081/employe/documents" }, "header": [] }
+        },
+        {
+          "name": "Uploader un document",
+          "request": { "method": "POST", "url": { "raw": "http://localhost:8081/employe/documents" }, "header": [] }
+        },
+        {
+          "name": "Supprimer un document",
+          "request": { "method": "DELETE", "url": { "raw": "http://localhost:8081/employe/documents/:id" }, "header": [] }
+        },
+        {
+          "name": "Télécharger un document",
+          "request": { "method": "GET", "url": { "raw": "http://localhost:8081/employe/documents/:id/download" }, "header": [] }
+        }
+      ]
+    },
+    {
+      "name": "Keycloak Sync (Admin)",
+      "item": [
+        {
+          "name": "Accès Keycloak d'un employé",
+          "request": { "method": "GET", "url": { "raw": "http://localhost:8081/admin/keycloak/employes/:id/access" }, "header": [] }
+        },
+        {
+          "name": "Modifier les rôles",
+          "request": { "method": "PUT", "url": { "raw": "http://localhost:8081/admin/keycloak/employes/:id/roles" }, "header": [] }
+        },
+        {
+          "name": "Modifier les groupes",
+          "request": { "method": "PUT", "url": { "raw": "http://localhost:8081/admin/keycloak/employes/:id/groups" }, "header": [] }
+        },
+        {
+          "name": "Activer / Désactiver le compte",
+          "request": { "method": "PUT", "url": { "raw": "http://localhost:8081/admin/keycloak/employes/:id/account" }, "header": [] }
+        },
+        {
+          "name": "Réinitialiser le mot de passe",
+          "request": { "method": "POST", "url": { "raw": "http://localhost:8081/admin/keycloak/employes/:id/reset-password" }, "header": [] }
+        },
+        {
+          "name": "Lister les users Keycloak",
+          "request": { "method": "GET", "url": { "raw": "http://localhost:8081/api/keycloak/users" }, "header": [] }
+        }
+      ]
+    },
+    {
+      "name": "Équipe",
+      "item": [
+        {
+          "name": "Lister les membres",
+          "request": { "method": "GET", "url": { "raw": "http://localhost:8081/equipe/membres" }, "header": [] }
+        },
+        {
+          "name": "Obtenir un membre",
+          "request": { "method": "GET", "url": { "raw": "http://localhost:8081/equipe/membres/:id" }, "header": [] }
+        },
+        {
+          "name": "Ajouter un membre",
+          "request": { "method": "POST", "url": { "raw": "http://localhost:8081/equipe/membres" }, "header": [] }
+        },
+        {
+          "name": "Modifier un membre",
+          "request": { "method": "PATCH", "url": { "raw": "http://localhost:8081/equipe/membres/:id" }, "header": [] }
+        },
+        {
+          "name": "Retirer un membre",
+          "request": { "method": "DELETE", "url": { "raw": "http://localhost:8081/equipe/membres/:id" }, "header": [] }
+        }
+      ]
+    }
+  ]
+}

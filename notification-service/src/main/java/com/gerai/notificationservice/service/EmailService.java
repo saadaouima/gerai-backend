@@ -15,19 +15,39 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
+/**
+ * Service d'envoi d'emails HTML via SMTP Gmail pour les événements de notification critiques.
+ * <p>
+ * {@code @Service} : enregistre ce bean dans le contexte Spring comme composant de la couche service.<br>
+ * {@code @RequiredArgsConstructor} : injecte {@link JavaMailSender} par constructeur Lombok.<br>
+ * {@code @Slf4j} : fournit un logger Lombok pour tracer les envois et les erreurs SMTP.<br>
+ * {@code @Async} (sur les méthodes d'envoi) : exécute les envois dans un thread séparé pour
+ * ne pas bloquer le thread Kafka consommateur.
+ * </p>
+ * <p>
+ * L'envoi email est conditionné par la propriété {@code app.mail.enabled} (défaut : {@code true}).
+ * Un email n'est envoyé que si l'événement contient une adresse email valide.
+ * </p>
+ *
+ * @since 1.0
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class EmailService {
 
+    /** Bean JavaMailSender configuré par {@link com.gerai.notificationservice.config.MailConfig}. */
     private final JavaMailSender mailSender;
 
+    /** Adresse email expéditrice (ex. : {@code synapse-noreply@gmail.com}). */
     @Value("${spring.mail.username}")
     private String fromAddress;
 
+    /** Interrupteur global d'envoi d'emails, désactivable via {@code app.mail.enabled=false}. */
     @Value("${app.mail.enabled:true}")
     private boolean emailEnabled;
 
+    /** Table de correspondance entre le type de notification et l'objet de l'email. */
     private static final Map<TypeNotification, String> TYPE_SUBJECTS = Map.of(
             TypeNotification.NOUVELLE_DEMANDE,  "Nouvelle demande reçue — GerAI",
             TypeNotification.DEMANDE_APPROUVEE, "Demande approuvée — GerAI",
@@ -38,11 +58,15 @@ public class EmailService {
     );
 
     /**
-     * Envoie un email à partir d'un NotificationEvent Kafka.
+     * Compose et envoie un email HTML à partir d'un événement de notification Kafka.
+     * <p>
+     * L'envoi est ignoré si {@code emailEnabled} est {@code false} ou si l'événement
+     * ne contient pas d'adresse email valide. L'exécution est asynchrone pour ne pas
+     * bloquer le traitement du message Kafka.
+     * </p>
      *
-     * CORRECTION : utilise event.getTitle() + event.getContent()
-     * (ancienne version utilisait event.getTitre() et event.getMessage()
-     * qui n'existent plus dans le nouveau NotificationEvent).
+     * @param event l'événement de notification Kafka contenant l'adresse email destinataire,
+     *              le titre, le contenu et le type sémantique
      */
     @Async
     public void envoyerDepuisEvent(NotificationEvent event) {
@@ -64,6 +88,18 @@ public class EmailService {
         envoyerHtml(event.getEmail(), sujet, corps);
     }
 
+    /**
+     * Construit et envoie un email HTML brut de manière asynchrone via SMTP Gmail.
+     * <p>
+     * Utilise {@link jakarta.mail.internet.MimeMessage} avec encodage UTF-8 et
+     * corps au format HTML. Les erreurs SMTP sont capturées et journalisées sans
+     * propager d'exception pour ne pas impacter le flux Kafka.
+     * </p>
+     *
+     * @param to        l'adresse email du destinataire
+     * @param sujet     l'objet de l'email
+     * @param corpsHtml le corps HTML complet de l'email
+     */
     @Async
     public void envoyerHtml(String to, String sujet, String corpsHtml) {
         try {
@@ -80,6 +116,15 @@ public class EmailService {
         }
     }
 
+    /**
+     * Génère le corps HTML complet de l'email à partir du titre, du contenu et du type
+     * de notification (utilisé pour la couleur de la bannière et la bordure latérale).
+     *
+     * @param titre   le titre affiché dans la bannière colorée de l'email
+     * @param contenu le corps du message, avec les retours à la ligne convertis en {@code <br/>}
+     * @param type    le type de notification déterminant la couleur hexadécimale du template
+     * @return le code HTML complet de l'email prêt à être envoyé
+     */
     private String buildHtmlBody(String titre,
                                  String contenu,
                                  TypeNotification type) {

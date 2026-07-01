@@ -17,19 +17,60 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Service métier central du microservice notification-service.
+ * <p>
+ * {@code @Service} : enregistre ce bean comme composant de la couche service Spring.<br>
+ * {@code @RequiredArgsConstructor} : injecte {@link NotificationRepository},
+ * {@link NotificationMapper} et {@link EmailService} par constructeur Lombok.<br>
+ * {@code @Slf4j} : fournit un logger Lombok pour tracer les opérations métier.
+ * </p>
+ * <p>
+ * Responsabilités principales :
+ * <ul>
+ *   <li>Traitement des événements Kafka entrants : persistance + déclenchement email.</li>
+ *   <li>Persistance des notifications broadcast (par rôle).</li>
+ *   <li>Lecture des notifications par employé et par rôle.</li>
+ *   <li>Création manuelle de notifications (interface d'administration).</li>
+ *   <li>Gestion de l'état de lecture (marquer comme lue, compteur de badge).</li>
+ *   <li>Suppression des notifications d'un employé.</li>
+ * </ul>
+ * </p>
+ *
+ * @since 1.0
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class NotificationService {
 
+    /** Repository JPA pour les opérations CRUD sur la table NOTIFICATIONS. */
     private final NotificationRepository notificationRepository;
+
+    /** Mapper MapStruct pour les conversions entre entité, DTO et événement Kafka. */
     private final NotificationMapper     notificationMapper;
+
+    /** Service d'envoi d'emails HTML via SMTP Gmail. */
     private final EmailService           emailService;
 
     /* ═══════════════════════════════════════
        TRAITEMENT KAFKA
        ═══════════════════════════════════════ */
 
+    /**
+     * Traite un événement de notification reçu depuis Kafka, le persiste en base de données
+     * et déclenche l'envoi d'un email si l'adresse email du destinataire est fournie.
+     * <p>
+     * La conversion du champ {@code referenceId} (String Kafka) vers Long Oracle est sécurisée :
+     * seuls les caractères numériques sont conservés, les valeurs trop longues sont tronquées
+     * et les références purement alphanumériques sont converties en {@code null}.
+     * </p>
+     *
+     * @param event l'événement Kafka à traiter ({@code null} ignoré silencieusement)
+     * @return l'entité {@link Notification} persistée, ou {@code null} si l'événement
+     *         est ignoré (null ou sans {@code employeeId})
+     * @throws RuntimeException si la persistance en base de données échoue
+     */
     @Transactional
     public Notification processNotificationEvent(NotificationEvent event) {
 
@@ -111,6 +152,18 @@ public class NotificationService {
        BROADCAST — PERSISTANCE
        ═══════════════════════════════════════ */
 
+    /**
+     * Persiste une notification broadcast destinée à tous les utilisateurs d'un rôle.
+     * <p>
+     * Contrairement aux notifications personnelles, cette entité ne contient pas
+     * d'identifiant d'employé ; elle est routée par rôle via WebSocket.
+     * La conversion du {@code referenceId} suit la même logique de sécurisation
+     * que {@link #processNotificationEvent(NotificationEvent)}.
+     * </p>
+     *
+     * @param event l'événement Kafka de broadcast contenant le rôle cible
+     * @return l'entité {@link Notification} broadcast persistée
+     */
     @Transactional
     public Notification saveBroadcastNotification(NotificationEvent event) {
         TypeNotification typeEnum;
@@ -145,6 +198,13 @@ public class NotificationService {
        LECTURE
        ═══════════════════════════════════════ */
 
+    /**
+     * Retourne toutes les notifications personnelles d'un employé,
+     * triées par date de création décroissante.
+     *
+     * @param employeeId l'identifiant Oracle de l'employé destinataire
+     * @return la liste des DTOs de notification de l'employé
+     */
     @Transactional(readOnly = true)
     public List<NotificationDTO> getNotificationsByEmployee(Long employeeId) {
         return notificationRepository
@@ -154,6 +214,15 @@ public class NotificationService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Retourne les notifications personnelles de l'employé ainsi que les broadcasts
+     * de son rôle, triés par date décroissante.
+     * Utilisé par l'endpoint principal {@code GET /api/notifications}.
+     *
+     * @param employeeId l'identifiant Oracle de l'employé
+     * @param role       le rôle de l'employé (ADMIN, CHEF, EMPLOYE)
+     * @return la liste unifiée des DTOs de notification
+     */
     @Transactional(readOnly = true)
     public List<NotificationDTO> getNotificationsByEmployeeAndRole(Long employeeId, String role) {
         return notificationRepository
@@ -163,6 +232,13 @@ public class NotificationService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Retourne uniquement les notifications non lues de l'employé,
+     * triées par date décroissante.
+     *
+     * @param employeeId l'identifiant Oracle de l'employé
+     * @return la liste des DTOs de notification non lues
+     */
     @Transactional(readOnly = true)
     public List<NotificationDTO> getUnreadNotifications(Long employeeId) {
         return notificationRepository
@@ -172,6 +248,12 @@ public class NotificationService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Compte le nombre de notifications non lues pour alimenter le badge de l'interface Angular.
+     *
+     * @param employeeId l'identifiant Oracle de l'employé
+     * @return le nombre total de notifications non lues de cet employé
+     */
     @Transactional(readOnly = true)
     public long countUnread(Long employeeId) {
         return notificationRepository.countByEmployeeIdAndIsReadFalse(employeeId);
@@ -181,6 +263,13 @@ public class NotificationService {
        CRÉATION MANUELLE
        ═══════════════════════════════════════ */
 
+    /**
+     * Crée manuellement une notification depuis l'interface d'administration (RH/ADMIN).
+     * L'horodatage de création est géré par Oracle ({@code DEFAULT SYSTIMESTAMP}).
+     *
+     * @param request les données de la notification à créer (validées par Bean Validation)
+     * @return le DTO de la notification créée et persistée
+     */
     @Transactional
     public NotificationDTO create(CreateNotificationRequest request) {
         Notification notification = notificationMapper.toEntity(request);
@@ -198,21 +287,48 @@ public class NotificationService {
        ACTIONS
        ═══════════════════════════════════════ */
 
+    /**
+     * Marque toutes les notifications non lues de l'employé (personnelles et broadcasts de rôle)
+     * comme lues avec l'horodatage actuel.
+     *
+     * @param employeeId l'identifiant Oracle de l'employé
+     * @param role       le rôle de l'employé pour inclure les broadcasts non lus
+     * @return le nombre de notifications effectivement mises à jour
+     */
     @Transactional
     public int markAllAsRead(Long employeeId, String role) {
         return notificationRepository.markAllAsReadByEmployeeOrRole(employeeId, role, LocalDateTime.now());
     }
 
+    /**
+     * Supprime une notification par son identifiant technique Oracle.
+     *
+     * @param id l'identifiant Oracle de la notification à supprimer
+     */
     @Transactional
     public void deleteById(Long id) {
         notificationRepository.deleteById(id);
     }
 
+    /**
+     * Supprime toutes les notifications personnelles d'un employé.
+     *
+     * @param employeeId l'identifiant Oracle de l'employé dont les notifications sont supprimées
+     */
     @Transactional
     public void deleteNotificationsByEmployee(Long employeeId) {
         notificationRepository.deleteByEmployeeId(employeeId);
     }
 
+    /**
+     * Marque une notification individuelle comme lue si elle ne l'est pas déjà,
+     * en enregistrant l'horodatage de lecture.
+     *
+     * @param id l'identifiant Oracle de la notification à marquer comme lue
+     * @return le DTO de la notification mise à jour
+     * @throws jakarta.persistence.EntityNotFoundException si aucune notification
+     *         n'existe avec cet identifiant
+     */
     @Transactional
     public NotificationDTO markAsRead(Long id) {
         Notification notification = notificationRepository.findById(id)

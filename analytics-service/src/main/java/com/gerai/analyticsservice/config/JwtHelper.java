@@ -71,14 +71,32 @@ public class JwtHelper {
 
     /* ── Tests de rôle ─────────────────────────────────── */
 
+    /**
+     * Vérifie si l'utilisateur connecté possède le rôle CHEF.
+     *
+     * @param auth le contexte d'authentification Spring Security
+     * @return {@code true} si l'utilisateur a le rôle ROLE_CHEF
+     */
     public boolean isChef(Authentication auth) {
         return hasRole(auth, ROLE_CHEF);
     }
 
+    /**
+     * Vérifie si l'utilisateur connecté possède le rôle RH.
+     *
+     * @param auth le contexte d'authentification Spring Security
+     * @return {@code true} si l'utilisateur a le rôle ROLE_RH
+     */
     public boolean isRh(Authentication auth) {
         return hasRole(auth, ROLE_RH);
     }
 
+    /**
+     * Vérifie si l'utilisateur connecté possède le rôle ADMIN.
+     *
+     * @param auth le contexte d'authentification Spring Security
+     * @return {@code true} si l'utilisateur a le rôle ROLE_ADMIN
+     */
     public boolean isAdmin(Authentication auth) {
         return hasRole(auth, ROLE_ADMIN);
     }
@@ -97,6 +115,13 @@ public class JwtHelper {
 
     /* ── Helpers privés ────────────────────────────────── */
 
+    /**
+     * Vérifie si le contexte d'authentification contient un rôle donné.
+     *
+     * @param auth le contexte d'authentification Spring Security
+     * @param role le nom du rôle à vérifier (ex : "ROLE_RH")
+     * @return {@code true} si le rôle est présent dans les autorités
+     */
     private boolean hasRole(Authentication auth, String role) {
         if (auth == null) return false;
         return auth.getAuthorities().stream()
@@ -104,6 +129,13 @@ public class JwtHelper {
                 .anyMatch(role::equals);
     }
 
+    /**
+     * Extrait le token JWT depuis le contexte d'authentification Spring Security.
+     *
+     * @param auth le contexte d'authentification
+     * @return le {@link Jwt} si le contexte est de type {@link JwtAuthenticationToken},
+     *         {@code null} sinon
+     */
     private Jwt extractJwt(Authentication auth) {
         if (auth instanceof JwtAuthenticationToken jwtAuth) {
             return jwtAuth.getToken();

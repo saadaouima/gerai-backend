@@ -13,20 +13,59 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Service Chat complet adapté à Oracle.
+ * Service métier principal du microservice chat-service.
+ * <p>
+ * {@code @Service} : déclare ce bean comme service Spring géré par le conteneur IoC.
+ * <br>
+ * {@code @Slf4j} (Lombok) : injecte un logger SLF4J pour la traçabilité des opérations.
+ * <p>
+ * Responsabilités :
+ * <ul>
+ *   <li>Gestion du cycle de vie des conversations (directes et groupes).</li>
+ *   <li>Envoi et lecture de messages texte et fichiers.</li>
+ *   <li>Marquage automatique des messages comme lus lors de l'ouverture d'une conversation.</li>
+ *   <li>Mapping entre entités JPA ({@link com.gerai.chat.entity.Conversation},
+ *       {@link com.gerai.chat.entity.Message}) et DTOs de présentation.</li>
+ * </ul>
+ * <p>
+ * L'injection de {@link PresenceService} est différée ({@code @Lazy}) pour briser
+ * le cycle de dépendance circulaire avec {@link KeycloakAdminService}.
+ *
+ * @since 1.0
  */
 @Slf4j
 @Service
 public class ChatService {
 
+    /** Repository d'accès aux conversations. */
     private final ConversationRepository convRepo;
+
+    /** Repository d'accès aux messages. */
     private final MessageRepository msgRepo;
+
+    /** Repository d'accès aux participants des conversations. */
     private final ConversationParticipantRepository partRepo;
+
+    /** Repository de suivi de la lecture des messages. */
     private final MessageReadRepository readRepo;
+
+    /** Service de résolution des noms et IDs d'employés via Keycloak et Oracle. */
     private final KeycloakAdminService keycloakService;
+
+    /** Service de présence en temps réel des utilisateurs connectés. */
     private final PresenceService presenceService;
 
-    // Injection manuelle pour gérer le @Lazy et éviter les cycles
+    /**
+     * Constructeur avec injection manuelle pour gérer le {@code @Lazy} sur {@link PresenceService}
+     * et éviter les cycles de dépendances Spring au démarrage.
+     *
+     * @param convRepo        repository des conversations
+     * @param msgRepo         repository des messages
+     * @param partRepo        repository des participants
+     * @param readRepo        repository de la lecture des messages
+     * @param keycloakService service Keycloak/Oracle pour la résolution des identités
+     * @param presenceService service de présence (injection différée)
+     */
     public ChatService(ConversationRepository convRepo,
                        MessageRepository msgRepo,
                        ConversationParticipantRepository partRepo,
@@ -43,6 +82,12 @@ public class ChatService {
 
     /* ── CONVERSATIONS ────────────────────────────────── */
 
+    /**
+     * Retourne la liste des conversations actives de l'employé, triées par activité décroissante.
+     *
+     * @param employeeId l'identifiant Oracle de l'employé connecté
+     * @return la liste des {@link ConversationDTO} de l'employé (liste vide si aucune conversation)
+     */
     @Transactional(readOnly = true)
     public List<ConversationDTO> getMesConversations(Long employeeId) {
         return convRepo.findAllByEmployeeId(employeeId)
@@ -51,6 +96,17 @@ public class ChatService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Récupère une conversation directe existante entre deux employés,
+     * ou en crée une nouvelle si elle n'existe pas.
+     * <p>
+     * Implémente un mécanisme de récupération des états incohérents (conversation
+     * partiellement créée lors d'une transaction précédente échouée).
+     *
+     * @param emp1Id identifiant Oracle du premier employé (initiateur)
+     * @param emp2Id identifiant Oracle du second employé (destinataire)
+     * @return le {@link ConversationDTO} de la conversation directe, créé ou existant
+     */
     @Transactional
     public ConversationDTO getOuCreerConversationDirecte(Long emp1Id, Long emp2Id) {
         // 1. Standard lookup: conversation with both participants
@@ -92,6 +148,13 @@ public class ChatService {
         return toConversationDTO(conv, emp1Id);
     }
 
+    /**
+     * Ajoute un participant à une conversation de manière idempotente.
+     * N'insère pas si le participant existe déjà (évite les doublons en cas de retry).
+     *
+     * @param conv       la conversation à laquelle ajouter le participant
+     * @param employeeId l'identifiant Oracle de l'employé à ajouter
+     */
     private void safeAddParticipant(Conversation conv, Long employeeId) {
         if (partRepo.findByConversation_ConversationIdAndEmployeeId(
                 conv.getConversationId(), employeeId).isEmpty()) {
@@ -100,6 +163,14 @@ public class ChatService {
         }
     }
 
+    /**
+     * Crée une nouvelle conversation de groupe avec le créateur comme administrateur.
+     *
+     * @param creatorId      identifiant Oracle de l'employé créateur (rôle {@code ADMIN})
+     * @param name           nom du groupe
+     * @param participantIds liste des identifiants Oracle des autres membres (rôle {@code MEMBRE})
+     * @return le {@link ConversationDTO} du groupe nouvellement créé
+     */
     @Transactional
     public ConversationDTO creerGroupe(Long creatorId, String name, List<Long> participantIds) {
         Conversation conv = Conversation.builder()
@@ -123,6 +194,36 @@ public class ChatService {
 
     /* ── MESSAGES ────────────────────────────────────── */
 
+    /**
+     * Retourne tous les messages actifs d'une conversation et marque automatiquement
+     * les messages non lus comme lus pour l'employé demandeur.
+     * <p>
+     * Vérifie d'abord que l'employé est bien participant actif de la conversation
+     * avant tout accès aux données.
+     *
+     * @param conversationId l'identifiant Oracle de la conversation
+     * @param employeeId     l'identifiant Oracle de l'employé connecté
+     * @return la liste des {@link MessageDTO} triés chronologiquement (du plus ancien au plus récent)
+     * @throws SecurityException si l'employé n'est pas participant actif de la conversation
+     */
+    /**
+     * Quitte (supprime) une conversation du point de vue de l'employé connecté.
+     * Pose {@code leftAt = now()} sur la participation — la conversation disparaît
+     * de la liste de l'utilisateur sans affecter l'autre participant.
+     *
+     * @param conversationId identifiant Oracle de la conversation
+     * @param empId          identifiant Oracle de l'employé qui quitte
+     * @throws SecurityException si l'employé n'est pas participant de cette conversation
+     */
+    @Transactional
+    public void quitterConversation(Long conversationId, Long empId) {
+        ConversationParticipant part = partRepo
+                .findByConversation_ConversationIdAndEmployeeId(conversationId, empId)
+                .orElseThrow(() -> new SecurityException("Vous n'êtes pas participant de cette conversation"));
+        part.setLeftAt(LocalDateTime.now());
+        partRepo.save(part);
+    }
+
     @Transactional
     public List<MessageDTO> getMessages(Long conversationId, Long employeeId) {
         if (!partRepo.isActiveParticipant(conversationId, employeeId)) {
@@ -143,6 +244,22 @@ public class ChatService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Persiste un nouveau message dans une conversation et met à jour l'horodatage
+     * du dernier message de la conversation.
+     * <p>
+     * Vérifie que l'expéditeur est participant actif avant la persistance.
+     *
+     * @param conversationId l'identifiant Oracle de la conversation destinataire
+     * @param senderId       l'identifiant Oracle de l'expéditeur
+     * @param content        le contenu textuel du message
+     * @param type           le type du message : {@code TEXTE}, {@code IMAGE} ou {@code FICHIER}
+     * @param attachmentUrl  l'URL relative de la pièce jointe (null pour les messages texte)
+     * @param replyToId      l'identifiant Oracle du message auquel on répond (null si aucune réponse)
+     * @return le {@link MessageDTO} du message persisté
+     * @throws SecurityException    si l'expéditeur n'est pas participant actif
+     * @throws RuntimeException     si la conversation est introuvable en base
+     */
     @Transactional
     public MessageDTO envoyerMessage(Long conversationId, Long senderId, String content, String type, String attachmentUrl, Long replyToId) {
         if (!partRepo.isActiveParticipant(conversationId, senderId)) {
@@ -173,6 +290,21 @@ public class ChatService {
 
     /* ── MAPPERS ─────────────────────────────────────── */
 
+    /**
+     * Convertit une entité {@link com.gerai.chat.entity.Conversation} en {@link ConversationDTO}.
+     * <p>
+     * Calcule dynamiquement :
+     * <ul>
+     *   <li>Le nom de la conversation (nom de l'autre participant pour les conversations directes).</li>
+     *   <li>L'aperçu du dernier message (tronqué à 50 caractères).</li>
+     *   <li>Le nombre de messages non lus.</li>
+     *   <li>Le statut en ligne de chaque participant via {@link PresenceService}.</li>
+     * </ul>
+     *
+     * @param c                 l'entité conversation à convertir
+     * @param currentEmployeeId l'identifiant Oracle de l'employé courant (pour le comptage des non-lus)
+     * @return le DTO de présentation de la conversation
+     */
     private ConversationDTO toConversationDTO(Conversation c, Long currentEmployeeId) {
         List<ConversationParticipant> parts = partRepo.findByConversation_ConversationId(c.getConversationId());
 
@@ -217,6 +349,17 @@ public class ChatService {
                 .build();
     }
 
+    /**
+     * Convertit une entité {@link com.gerai.chat.entity.Message} en {@link MessageDTO}.
+     * <p>
+     * Calcule {@code luParMoi} : {@code true} si l'utilisateur courant est l'expéditeur
+     * ou si un enregistrement de lecture existe dans {@code MESSAGE_READS}.
+     * Remplace le contenu par "Message supprimé" si {@code isDeleted = 1}.
+     *
+     * @param m                 l'entité message à convertir
+     * @param currentEmployeeId l'identifiant Oracle de l'employé courant (pour le statut de lecture)
+     * @return le DTO de présentation du message
+     */
     private MessageDTO toMessageDTO(Message m, Long currentEmployeeId) {
         boolean luParMoi = currentEmployeeId.equals(m.getSenderId())
                 || readRepo.existsByMessage_MessageIdAndEmployeeId(m.getMessageId(), currentEmployeeId);

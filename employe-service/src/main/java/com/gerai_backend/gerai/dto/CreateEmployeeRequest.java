@@ -5,11 +5,13 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * Corrections vs l'ancienne version :
- *  - Suppression : jobTitle, salary (n'existent pas dans EMPLOYEES)
- *  - Ajout : deptId, positionId obligatoires (FKs dans la table EMPLOYEES)
- *  - Ajout : managerId, phone, birthDate, nationalId, gender (optionnels)
- *  - username reste Keycloak-only (non stocké dans EMPLOYEES)
+ * DTO de création d'un employé, utilisé comme corps de la requête POST {@code /employees}.
+ *
+ * <p>Contient les champs obligatoires (département, poste) et optionnels
+ * (téléphone, date de naissance, numéro national, genre, adresse, photo)
+ * nécessaires à la création d'un compte employé complet sur la plateforme Synapse.</p>
+ *
+ * @since 1.0
  */
 @Getter
 @Setter
@@ -18,31 +20,48 @@ import java.util.List;
 @Builder
 public class CreateEmployeeRequest {
 
-    /** Keycloak uniquement — devient preferred_username dans Keycloak */
+    /** Nom d'utilisateur Keycloak uniquement (devient {@code preferred_username}) — non stocké dans EMPLOYEES. */
     private String username;
 
+    /** Prénom de l'employé. */
     private String firstName;
+
+    /** Nom de famille de l'employé. */
     private String lastName;
+
+    /** Adresse email professionnelle (unique dans EMPLOYEES et dans Keycloak). */
     private String email;
+
+    /** Date d'embauche de l'employé. */
     private LocalDate hireDate;
 
-    /** FK obligatoire → DEPARTMENTS.dept_id */
+    /** FK obligatoire → {@code DEPARTMENTS.dept_id}. */
     private Long deptId;
 
-    /** FK obligatoire → POSITIONS.position_id */
+    /** FK obligatoire → {@code POSITIONS.position_id}. */
     private Long positionId;
 
-    /** FK optionnel → EMPLOYEES.employee_id (manager direct) */
+    /** FK optionnel → {@code EMPLOYEES.employee_id} (manager direct de l'employé). */
     private Long managerId;
 
-    /* ── Champs optionnels ─────────────────────────────── */
+    /** Numéro de téléphone de l'employé (optionnel). */
     private String phone;
+
+    /** Date de naissance de l'employé (optionnelle). */
     private LocalDate birthDate;
+
+    /** Numéro de carte d'identité nationale (optionnel, unique). */
     private String nationalId;
-    private String gender;      // M | F | AUTRE
+
+    /** Genre de l'employé : {@code M}, {@code F} ou {@code AUTRE} (optionnel). */
+    private String gender;
+
+    /** Adresse postale de l'employé (optionnelle). */
     private String address;
+
+    /** URL de la photo de profil de l'employé (optionnelle). */
     private String photoUrl;
 
-    /** Keycloak realm roles to assign (e.g. ["employe"], ["chef"]) */
+    /** Liste des rôles Keycloak realm à attribuer à la création (ex. {@code ["employe"]}, {@code ["chef"]}). */
     private List<String> roles;
 }

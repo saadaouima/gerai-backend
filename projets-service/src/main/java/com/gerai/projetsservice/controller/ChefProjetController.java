@@ -16,20 +16,23 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 
 /**
- * ═══════════════════════════════════════════════════════════
- * ChefProjetController  —  /api/affectation
+ * Contrôleur REST pour la gestion des projets et tâches par le chef de projet.
+ * <p>
+ * Expose les endpoints {@code /api/affectation} permettant au chef de :
+ * <ul>
+ *   <li>Consulter ses projets et les détails d'un projet spécifique.</li>
+ *   <li>Créer, modifier et supprimer des projets.</li>
+ *   <li>Ajouter des membres à un projet.</li>
+ *   <li>Créer, modifier, assigner et supprimer des tâches.</li>
+ *   <li>Consulter les tâches de tous ses projets.</li>
+ *   <li>Consulter la liste des employés disponibles pour affectation.</li>
+ * </ul>
+ * </p>
+ * <p>
+ * Les rôles RH/ADMIN ont également accès pour la supervision globale.
+ * </p>
  *
- * Consommé par le ProjetService Angular de l'espace Chef :
- *   GET    /api/affectation/projets
- *   POST   /api/affectation/projets
- *   PUT    /api/affectation/projets/{id}
- *   DELETE /api/affectation/projets/{id}
- *   GET    /api/affectation/employes
- *   POST   /api/affectation/projets/{id}/membres
- *   POST   /api/affectation/taches
- *   PUT    /api/affectation/taches/{id}
- *   POST   /api/affectation/taches/{id}/assign
- * ═══════════════════════════════════════════════════════════
+ * @since 1.0
  */
 @Slf4j
 @RestController
@@ -40,6 +43,12 @@ class ChefProjetController {
 
     private final ProjetService projetService;
 
+    /**
+     * Retourne les projets du chef authentifié (ou tous les projets pour admin/RH).
+     *
+     * @param auth contexte d'authentification
+     * @return liste des projets (HTTP 200), liste vide en cas d'erreur technique
+     */
     @GetMapping("/projets")
     @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
     public ResponseEntity<List<ProjetDTO>> getProjets(Authentication auth) {
@@ -51,6 +60,13 @@ class ChefProjetController {
         }
     }
 
+    /**
+     * Retourne le détail d'un projet spécifique (membres, tâches, statistiques).
+     *
+     * @param id   identifiant du projet
+     * @param auth contexte d'authentification pour le contrôle d'accès
+     * @return le DTO du projet (HTTP 200), HTTP 404 si introuvable, HTTP 403 si accès interdit
+     */
     @GetMapping("/projets/{id}")
     @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
     public ResponseEntity<?> getProjetById(
@@ -71,6 +87,12 @@ class ChefProjetController {
         }
     }
 
+    /**
+     * Retourne toutes les tâches de tous les projets du chef authentifié.
+     *
+     * @param auth contexte d'authentification
+     * @return liste des tâches (HTTP 200), liste vide en cas d'erreur technique
+     */
     @GetMapping("/taches")
     @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
     public ResponseEntity<List<TacheDTO>> getTaches(Authentication auth) {
@@ -82,6 +104,13 @@ class ChefProjetController {
         }
     }
 
+    /**
+     * Crée un nouveau projet et affecte le chef authentifié comme chef de projet.
+     *
+     * @param req  données de création du projet (nom, dates, description...)
+     * @param auth contexte d'authentification (chef identifié depuis le JWT)
+     * @return le projet créé (HTTP 201), HTTP 400 si données invalides, HTTP 500 si erreur serveur
+     */
     @PostMapping("/projets")
     @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
     public ResponseEntity<?> createProjet(
@@ -101,6 +130,14 @@ class ChefProjetController {
         }
     }
 
+    /**
+     * Met à jour les informations d'un projet existant.
+     *
+     * @param id   identifiant du projet à modifier
+     * @param req  nouvelles données (seuls les champs non nuls sont appliqués)
+     * @param auth contexte d'authentification pour le contrôle d'accès
+     * @return le projet mis à jour (HTTP 200), HTTP 400 si données invalides, HTTP 500 si erreur serveur
+     */
     @PutMapping("/projets/{id}")
     @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
     public ResponseEntity<?> updateProjet(
@@ -120,6 +157,13 @@ class ChefProjetController {
         }
     }
 
+    /**
+     * Supprime un projet et toutes ses données associées (tâches, membres).
+     *
+     * @param id   identifiant du projet à supprimer
+     * @param auth contexte d'authentification pour le contrôle d'accès
+     * @return HTTP 204 si supprimé avec succès
+     */
     @DeleteMapping("/projets/{id}")
     @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
     public ResponseEntity<Void> deleteProjet(
@@ -129,12 +173,26 @@ class ChefProjetController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Retourne la liste de tous les employés disponibles pour affectation à un projet.
+     *
+     * @param auth contexte d'authentification
+     * @return liste des employés (HTTP 200)
+     */
     @GetMapping("/employes")
     @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
     public ResponseEntity<List<EmployeDTO>> getEmployes(Authentication auth) {
         return ResponseEntity.ok(projetService.getEmployes(auth));
     }
 
+    /**
+     * Ajoute des membres à un projet existant.
+     *
+     * @param id          identifiant du projet
+     * @param employeeIds liste des identifiants d'employés à ajouter
+     * @param auth        contexte d'authentification pour le contrôle d'accès
+     * @return le projet mis à jour (HTTP 200), HTTP 409 si conflit, HTTP 500 si erreur serveur
+     */
     @PostMapping("/projets/{id}/membres")
     @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
     public ResponseEntity<?> addMembres(
@@ -156,6 +214,13 @@ class ChefProjetController {
         }
     }
 
+    /**
+     * Crée une nouvelle tâche dans un projet.
+     *
+     * @param req  données de création de la tâche (titre, projectId, priorité, dates...)
+     * @param auth contexte d'authentification pour le contrôle d'accès
+     * @return la tâche créée (HTTP 201)
+     */
     @PostMapping("/taches")
     @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
     public ResponseEntity<TacheDTO> createTache(
@@ -165,6 +230,14 @@ class ChefProjetController {
                 .body(projetService.createTache(req, auth));
     }
 
+    /**
+     * Met à jour une tâche existante.
+     *
+     * @param id   identifiant de la tâche à modifier
+     * @param req  nouvelles données de la tâche
+     * @param auth contexte d'authentification pour le contrôle d'accès
+     * @return la tâche mise à jour (HTTP 200)
+     */
     @PutMapping("/taches/{id}")
     @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
     public ResponseEntity<TacheDTO> updateTache(
@@ -174,6 +247,14 @@ class ChefProjetController {
         return ResponseEntity.ok(projetService.updateTache(id, req, auth));
     }
 
+    /**
+     * Assigne une tâche à un employé spécifique.
+     *
+     * @param id   identifiant de la tâche
+     * @param body map JSON contenant la clé {@code employeeId}
+     * @param auth contexte d'authentification pour le contrôle d'accès
+     * @return la tâche mise à jour avec l'assignation (HTTP 200)
+     */
     @PostMapping("/taches/{id}/assign")
     @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
     public ResponseEntity<TacheDTO> assignTache(
@@ -183,6 +264,13 @@ class ChefProjetController {
         return ResponseEntity.ok(projetService.assignTache(id, body.get("employeeId"), auth));
     }
 
+    /**
+     * Supprime une tâche.
+     *
+     * @param id   identifiant de la tâche à supprimer
+     * @param auth contexte d'authentification pour le contrôle d'accès
+     * @return HTTP 204 si supprimée avec succès
+     */
     @DeleteMapping("/taches/{id}")
     @PreAuthorize("hasAnyRole('CHEF','ADMIN','ADMIN_RH','RH')")
     public ResponseEntity<Void> deleteTache(

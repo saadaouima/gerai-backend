@@ -8,10 +8,19 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * Entité mappée sur GERAI.LEAVE_REQUESTS (13 colonnes).
- *
+ * Entité JPA représentant une demande de congé soumise par un employé.
+ * Mappée sur la table Oracle {@code GERAI.LEAVE_REQUESTS}.
+ * <p>
+ * Workflow standard : EN_ATTENTE → VALIDE_CHEF → VALIDE_RH | REFUSE | ANNULE.
+ * Workflow longue maladie (type 12) : EN_ETUDE_MEDICALE → EN_ATTENTE → VALIDE_CHEF → VALIDE_RH | REFUSE.
+ * <p>
+ * Le quota annuel est vérifié par {@link com.gerai.demandesservice.service.LeaveQuotaService}
+ * et le nombre de jours ouvrés est calculé par {@link com.gerai.demandesservice.service.WorkingDayService}.
+ * <p>
  * Statuts valides (CHECK Oracle) :
- *   EN_ATTENTE | VALIDE_CHEF | VALIDE_RH | REFUSE | ANNULE
+ *   EN_ATTENTE | VALIDE_CHEF | VALIDE_RH | REFUSE | ANNULE | EN_ETUDE_MEDICALE
+ *
+ * @since 1.0
  */
 @Entity
 @Table(name = "LEAVE_REQUESTS")
@@ -97,9 +106,14 @@ public class LeaveRequest {
     @Column(name = "MED_COMMENT", length = 500)
     private String medComment;
 
+    /** Horodatage de création de la demande — positionné par {@code @PrePersist}. */
     @Column(name = "CREATED_AT", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    /**
+     * Initialise {@code createdAt} à l'heure courante et le statut à {@code EN_ATTENTE} si null,
+     * avant l'insertion JPA.
+     */
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();

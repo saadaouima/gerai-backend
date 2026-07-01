@@ -6,37 +6,63 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 /**
- * Repository en lecture seule sur EMPLOYEES.
- * Utilisé pour résoudre l'employee_id Oracle depuis le JWT Keycloak.
+ * Repository Spring Data JPA en lecture seule sur {@code GERAI.EMPLOYEES}.
+ * <p>
+ * {@code @Repository} : marque cette interface comme composant Spring de la couche données.
+ * <p>
+ * Utilisé exclusivement pour résoudre les identités Oracle depuis le JWT Keycloak
+ * (sub → EMPLOYEE_ID, email → EMPLOYEE_ID) et pour les lookups de notifications.
+ * Toutes les requêtes sont des requêtes natives Oracle afin d'éviter de mapper
+ * l'intégralité de la table EMPLOYEES dans ce microservice.
  *
- * On n'a pas d'entité Employee complète ici — on projette juste les
- * champs nécessaires via des requêtes natives.
+ * @since 1.0
  */
 @Repository
 public interface EmployeeRepository extends JpaRepository<com.gerai.demandesservice.model.EmployeeRef, Long> {
 
-    /** Résolution depuis le UUID Keycloak (claim "sub") */
+    /**
+     * Résout l'identifiant Oracle d'un employé depuis son UUID Keycloak (claim {@code sub}).
+     *
+     * @param keycloakSub UUID Keycloak de l'utilisateur
+     * @return identifiant Oracle de l'employé, ou {@code null} si introuvable
+     */
     @Query(value = """
             SELECT EMPLOYEE_ID FROM GERAI.EMPLOYEES
             WHERE USER_ID = :keycloakSub AND STATUS = 'ACTIF'
             """, nativeQuery = true)
     Long findEmployeeIdByKeycloakSub(@Param("keycloakSub") String keycloakSub);
 
-    /** Résolution depuis l'email (fallback si sub non trouvé) */
+    /**
+     * Résout l'identifiant Oracle d'un employé depuis son adresse email
+     * (fallback si {@code sub} non trouvé).
+     *
+     * @param email adresse email de l'employé
+     * @return identifiant Oracle de l'employé, ou {@code null} si introuvable
+     */
     @Query(value = """
             SELECT EMPLOYEE_ID FROM GERAI.EMPLOYEES
             WHERE EMAIL = :email AND STATUS = 'ACTIF'
             """, nativeQuery = true)
     Long findEmployeeIdByEmail(@Param("email") String email);
 
-    /** Résolution de l'employee_id du manager d'un employé */
+    /**
+     * Retourne l'identifiant Oracle du manager direct d'un employé (champ {@code MANAGER_ID}).
+     *
+     * @param employeeId identifiant Oracle de l'employé
+     * @return identifiant Oracle du manager, ou {@code null} si non renseigné
+     */
     @Query(value = """
             SELECT MANAGER_ID FROM GERAI.EMPLOYEES
             WHERE EMPLOYEE_ID = :employeeId
             """, nativeQuery = true)
     Long findManagerIdByEmployeeId(@Param("employeeId") Long employeeId);
 
-    /** Email du manager (pour la notification Kafka) */
+    /**
+     * Retourne l'adresse email du manager direct d'un employé (utilisé pour les notifications Kafka).
+     *
+     * @param employeeId identifiant Oracle de l'employé
+     * @return email du manager, ou {@code null} si le manager n'est pas renseigné ou n'a pas d'email
+     */
     @Query(value = """
             SELECT e2.EMAIL
             FROM GERAI.EMPLOYEES e1
@@ -45,7 +71,13 @@ public interface EmployeeRepository extends JpaRepository<com.gerai.demandesserv
             """, nativeQuery = true)
     String findManagerEmailByEmployeeId(@Param("employeeId") Long employeeId);
 
-    /** UUID Keycloak du manager (pour destinataireId dans NotificationMessage) */
+    /**
+     * Retourne l'UUID Keycloak ({@code USER_ID}) du manager direct d'un employé.
+     * Utilisé pour le champ {@code destinataireId} dans les événements de notification.
+     *
+     * @param employeeId identifiant Oracle de l'employé
+     * @return UUID Keycloak du manager, ou {@code null} si absent
+     */
     @Query(value = """
             SELECT e2.USER_ID
             FROM GERAI.EMPLOYEES e1
@@ -54,7 +86,12 @@ public interface EmployeeRepository extends JpaRepository<com.gerai.demandesserv
             """, nativeQuery = true)
     String findManagerKeycloakSubByEmployeeId(@Param("employeeId") Long employeeId);
 
-    /** Nom complet de l'employé */
+    /**
+     * Retourne le nom complet d'un employé ({@code FIRST_NAME || ' ' || LAST_NAME}).
+     *
+     * @param employeeId identifiant Oracle de l'employé
+     * @return nom complet de l'employé, ou {@code null} si introuvable
+     */
     @Query(value = """
             SELECT FIRST_NAME || ' ' || LAST_NAME
             FROM GERAI.EMPLOYEES
@@ -62,37 +99,75 @@ public interface EmployeeRepository extends JpaRepository<com.gerai.demandesserv
             """, nativeQuery = true)
     String findFullNameByEmployeeId(@Param("employeeId") Long employeeId);
 
-    /** Tous les employés RH/admin destinataires des notifications (crédit, document). */
+    /**
+     * Retourne les identifiants Oracle de tous les employés actifs ayant un rôle RH ou Admin
+     * (détecté via le champ {@code JOB_TITLE}).
+     * Utilisé pour diffuser les notifications de nouvelles demandes aux gestionnaires.
+     *
+     * @return liste des identifiants Oracle des administrateurs RH actifs
+     */
     @Query(value = """
-            SELECT EMPLOYEE_ID FROM GERAI.EMPLOYEES
-            WHERE STATUS = 'ACTIF'
+            SELECT e.EMPLOYEE_ID
+            FROM GERAI.EMPLOYEES e
+            JOIN GERAI.POSITIONS p ON e.POSITION_ID = p.POSITION_ID
+            WHERE e.STATUS = 'ACTIF'
               AND (
-                   UPPER(JOB_TITLE) LIKE '%ADMINISTRATEUR%'
-                OR UPPER(JOB_TITLE) LIKE '%ADMIN%'
-                OR UPPER(JOB_TITLE) LIKE '%RESPONSABLE RH%'
-                OR UPPER(JOB_TITLE) LIKE '%RESSOURCES HUMAINES%'
-                OR UPPER(JOB_TITLE) LIKE '%DRH%'
-                OR UPPER(JOB_TITLE) LIKE '%DIRECTEUR RH%'
-                OR UPPER(JOB_TITLE) LIKE '%RH%'
+                   UPPER(p.TITLE) LIKE '%ADMINISTRATEUR%'
+                OR UPPER(p.TITLE) LIKE '%ADMIN%'
+                OR UPPER(p.TITLE) LIKE '%RESPONSABLE RH%'
+                OR UPPER(p.TITLE) LIKE '%RESSOURCES HUMAINES%'
+                OR UPPER(p.TITLE) LIKE '%DRH%'
+                OR UPPER(p.TITLE) LIKE '%DIRECTEUR RH%'
+                OR UPPER(p.TITLE) LIKE '%RH%'
+                OR UPPER(p.CODE)  LIKE 'RH%'
               )
             """, nativeQuery = true)
     java.util.List<Long> findAdminEmployeeIds();
 
-    /** Email d'un employé par son ID */
+    @Query(value = """
+            SELECT e.EMPLOYEE_ID
+            FROM GERAI.EMPLOYEES e
+            JOIN GERAI.POSITIONS p ON e.POSITION_ID = p.POSITION_ID
+            WHERE e.STATUS = 'ACTIF'
+              AND (
+                   UPPER(p.TITLE) LIKE '%DIRECTEUR%'
+                OR UPPER(p.CODE) = 'DG-001'
+              )
+            """, nativeQuery = true)
+    java.util.List<Long> findDgEmployeeIds();
+
+    /**
+     * Retourne l'adresse email d'un employé par son identifiant Oracle.
+     *
+     * @param employeeId identifiant Oracle de l'employé
+     * @return adresse email de l'employé, ou {@code null} si introuvable
+     */
     @Query(value = """
             SELECT EMAIL FROM GERAI.EMPLOYEES
             WHERE EMPLOYEE_ID = :employeeId
             """, nativeQuery = true)
     String findEmailByEmployeeId(@Param("employeeId") Long employeeId);
 
-    /** Département d'un employé (fallback quand MANAGER_ID n'est pas renseigné) */
+    /**
+     * Retourne l'identifiant du département d'un employé.
+     * Utilisé comme fallback de résolution hiérarchique quand {@code MANAGER_ID} n'est pas renseigné.
+     *
+     * @param employeeId identifiant Oracle de l'employé
+     * @return identifiant Oracle du département (DEPARTMENTS.DEPT_ID), ou {@code null}
+     */
     @Query(value = """
             SELECT DEPT_ID FROM GERAI.EMPLOYEES
             WHERE EMPLOYEE_ID = :employeeId
             """, nativeQuery = true)
     Long findDeptIdByEmployeeId(@Param("employeeId") Long employeeId);
 
-    /** Tous les employés actifs d'un département (fallback manager) */
+    /**
+     * Retourne les identifiants Oracle de tous les employés actifs d'un département.
+     * Utilisé comme fallback de résolution d'équipe quand {@code MANAGER_ID} n'est pas renseigné.
+     *
+     * @param deptId identifiant Oracle du département (DEPARTMENTS.DEPT_ID)
+     * @return liste des identifiants Oracle des employés actifs du département
+     */
     @Query(value = """
             SELECT EMPLOYEE_ID FROM GERAI.EMPLOYEES
             WHERE DEPT_ID = :deptId AND STATUS = 'ACTIF'
@@ -100,9 +175,12 @@ public interface EmployeeRepository extends JpaRepository<com.gerai.demandesserv
     java.util.List<Long> findEmployeeIdsByDeptId(@Param("deptId") Long deptId);
 
     /**
-     * Fallback notification via PROJECT_MEMBERS :
-     * renvoie le CREATED_BY du premier projet actif auquel l'employé appartient.
-     * Cohérent avec TrainingRequestRepository.findByManager.
+     * Fallback de résolution du manager via la table {@code GERAI.PROJECT_MEMBERS} :
+     * retourne le {@code CREATED_BY} du premier projet actif auquel l'employé appartient.
+     * Cohérent avec la logique de {@code TrainingRequestRepository.findByManager}.
+     *
+     * @param employeeId identifiant Oracle de l'employé
+     * @return identifiant Oracle du chef de projet, ou {@code null} si l'employé n'appartient à aucun projet actif
      */
     @Query(value = """
             SELECT p.CREATED_BY
@@ -115,8 +193,13 @@ public interface EmployeeRepository extends JpaRepository<com.gerai.demandesserv
     Long findManagerIdViaProjectByEmployeeId(@Param("employeeId") Long employeeId);
 
     /**
-     * Fallback notification : trouve le chef du même département
-     * (JOB_TITLE contient 'CHEF' ou 'MANAGER'), quand les deux sources ci-dessus échouent.
+     * Fallback de résolution du manager via le département :
+     * retourne le premier employé actif du même département dont le {@code JOB_TITLE}
+     * contient {@code 'CHEF'} ou {@code 'MANAGER'}.
+     * Utilisé quand {@code MANAGER_ID} et les projets ne permettent pas de résoudre le chef.
+     *
+     * @param employeeId identifiant Oracle de l'employé
+     * @return identifiant Oracle du chef de département, ou {@code null} si aucun chef trouvé
      */
     @Query(value = """
             SELECT e2.EMPLOYEE_ID
@@ -130,7 +213,15 @@ public interface EmployeeRepository extends JpaRepository<com.gerai.demandesserv
             """, nativeQuery = true)
     Long findChefInSameDeptByEmployeeId(@Param("employeeId") Long employeeId);
 
-    /** Salaire mensuel depuis le contrat actif (pour la validation du montant crédit) */
+    /**
+     * Retourne le salaire brut mensuel de l'employé depuis son dernier contrat actif
+     * (table {@code GERAI.CONTRACTS}, champ {@code GROSS_SALARY}).
+     * Utilisé par {@link com.gerai.demandesservice.service.SalaryValidationService}
+     * pour valider que le montant d'un crédit ne dépasse pas 3× le salaire mensuel.
+     *
+     * @param employeeId identifiant Oracle de l'employé
+     * @return salaire brut mensuel en TND, ou {@code 0} si aucun contrat trouvé
+     */
     @Query(value = """
             SELECT NVL(c.GROSS_SALARY, 0)
             FROM GERAI.CONTRACTS c

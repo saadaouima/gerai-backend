@@ -25,6 +25,16 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+/**
+ * Service gérant toutes les interactions avec l'API Admin REST de Keycloak :
+ * création, mise à jour et suppression des utilisateurs, gestion des rôles et groupes,
+ * configuration des scopes et mappers de protocole.
+ *
+ * <p>@Service : enregistré comme bean Spring et injecté dans {@link EmployeeService}
+ * et {@link com.gerai_backend.gerai.init.DevDataSeeder}.</p>
+ *
+ * @since 1.0
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -32,9 +42,17 @@ public class KeycloakUserService {
 
     private final Keycloak keycloak;
 
+    /** Nom du realm Keycloak cible (realm des employés, différent du realm d'administration). */
     @Value("${keycloak.target-realm}")
     private String targetRealm;
 
+    /**
+     * Résultat du provisionnement d'un utilisateur Keycloak.
+     *
+     * @param userId   l'UUID Keycloak de l'utilisateur créé ou retrouvé
+     * @param username le nom d'utilisateur Keycloak réel (peut différer du nom demandé)
+     * @param isNew    {@code true} si l'utilisateur a été créé, {@code false} s'il existait déjà
+     */
     public record KeycloakProvisionResult(String userId, String username, boolean isNew) {}
 
     /**
@@ -106,6 +124,15 @@ public class KeycloakUserService {
         return new KeycloakProvisionResult(keycloakUserId, actualUsername, true);
     }
 
+    /**
+     * Récupère le nom d'utilisateur réel depuis Keycloak pour l'utilisateur donné.
+     * Retourne la valeur de secours si la récupération échoue.
+     *
+     * @param usersResource la ressource utilisateurs Keycloak du realm cible
+     * @param userId        l'UUID Keycloak de l'utilisateur
+     * @param fallback      la valeur à retourner en cas d'échec
+     * @return le nom d'utilisateur Keycloak réel, ou {@code fallback} si non récupérable
+     */
     private String getActualUsername(UsersResource usersResource, String userId, String fallback) {
         try {
             UserRepresentation rep = usersResource.get(userId).toRepresentation();
@@ -116,6 +143,13 @@ public class KeycloakUserService {
         }
     }
 
+    /**
+     * Réinitialise le mot de passe d'un utilisateur Keycloak.
+     * Le mot de passe est marqué comme temporaire, forçant le changement à la prochaine connexion.
+     *
+     * @param keycloakUserId l'UUID Keycloak de l'utilisateur
+     * @param newPassword    le nouveau mot de passe en clair
+     */
     public void resetPassword(String keycloakUserId, String newPassword) {
         CredentialRepresentation cred = new CredentialRepresentation();
         cred.setType(CredentialRepresentation.PASSWORD);
@@ -124,6 +158,12 @@ public class KeycloakUserService {
         keycloak.realm(targetRealm).users().get(keycloakUserId).resetPassword(cred);
     }
 
+    /**
+     * Recherche l'UUID Keycloak d'un utilisateur par son adresse email.
+     *
+     * @param email l'adresse email de l'utilisateur à rechercher
+     * @return l'UUID Keycloak si trouvé, {@code null} sinon
+     */
     public String findUserIdByEmail(String email) {
         List<UserRepresentation> users = keycloak.realm(targetRealm)
                 .users()
@@ -136,6 +176,12 @@ public class KeycloakUserService {
                 .orElse(null);
     }
 
+    /**
+     * Recherche l'UUID Keycloak d'un utilisateur par son nom d'utilisateur.
+     *
+     * @param username le nom d'utilisateur Keycloak à rechercher
+     * @return l'UUID Keycloak si trouvé, {@code null} sinon
+     */
     public String findUserIdByUsername(String username) {
         List<UserRepresentation> users = keycloak.realm(targetRealm)
                 .users()
@@ -357,6 +403,13 @@ public class KeycloakUserService {
         }
     }
 
+    /**
+     * Supprime un utilisateur Keycloak : termine d'abord toutes ses sessions SSO actives
+     * (les tokens JWT déjà émis restent valides jusqu'à expiration de leur TTL),
+     * puis supprime le compte du realm.
+     *
+     * @param keycloakUserId l'UUID Keycloak de l'utilisateur à supprimer
+     */
     public void deleteKeycloakUser(String keycloakUserId) {
         var userResource = keycloak.realm(targetRealm).users().get(keycloakUserId);
 
@@ -421,6 +474,14 @@ public class KeycloakUserService {
         return keycloakId;
     }
 
+    /**
+     * Assigne une liste de rôles realm Keycloak à un utilisateur.
+     * Les rôles inexistants dans le realm sont ignorés avec un avertissement.
+     * Opération cumulative — n'efface pas les rôles existants.
+     *
+     * @param userId    l'UUID Keycloak de l'utilisateur
+     * @param roleNames la liste des noms de rôles realm à assigner
+     */
     public void assignRealmRoles(String userId, List<String> roleNames) {
         RealmResource realm = keycloak.realm(targetRealm);
         List<RoleRepresentation> roles = roleNames.stream()

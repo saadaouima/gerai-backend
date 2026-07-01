@@ -22,19 +22,39 @@ import java.util.Map;
 public class DashboardSummaryDTO {
 
     /* ── Comptages demandes ───────────────────────────── */
+
+    /** Nombre total de demandes RH (toutes tables confondues). */
     private long totalDemandes;
+
+    /** Nombre de demandes dont le statut est EN_ATTENTE. */
     private long demandesEnAttente;
-    private long demandesValidees;    // somme de tous statuts d'approbation finale
-    private long demandesRejetees;    // statut = REFUSE
-    private long demandesAnnulees;    // statut = ANNULE
+
+    /** Nombre de demandes validées (somme de tous les statuts d'approbation finale). */
+    private long demandesValidees;
+
+    /** Nombre de demandes refusées (statut = REFUSE). */
+    private long demandesRejetees;
+
+    /** Nombre de demandes annulées (statut = ANNULE). */
+    private long demandesAnnulees;
 
     /* ── Répartitions ────────────────────────────────── */
-    private Map<String, Long> demandesParType;    // CONGE:12, PRET:5 ...
-    private Map<String, Long> demandesParStatut;  // EN_ATTENTE:3 ...
-    private Map<String, Long> demandesParMois;    // 2026-01:8 ...
+
+    /** Répartition des demandes par type (ex : CONGE:12, PRET:5). */
+    private Map<String, Long> demandesParType;
+
+    /** Répartition des demandes par statut (ex : EN_ATTENTE:3). */
+    private Map<String, Long> demandesParStatut;
+
+    /** Répartition mensuelle des demandes, clé au format "YYYY-MM" (ex : 2026-01:8). */
+    private Map<String, Long> demandesParMois;
 
     /* ── Taux (en %) ─────────────────────────────────── */
+
+    /** Taux d'acceptation global des demandes en pourcentage. */
     private double tauxAcceptation;
+
+    /** Taux de rejet global des demandes en pourcentage. */
     private double tauxRejet;
 
     /* ── KPIs temps réel ─────────────────────────────── */
@@ -51,6 +71,10 @@ public class DashboardSummaryDTO {
     private long   tachesOuvertes;
 
     /* ── Sous-stats intégrées (optionnelles) ─────────── */
+
+    /** Statistiques détaillées des congés (optionnel, null si non demandé). */
     private CongeStatsDTO     congeStats;
+
+    /** Statistiques détaillées des formations (optionnel, null si non demandé). */
     private FormationStatsDTO formationStats;
 }

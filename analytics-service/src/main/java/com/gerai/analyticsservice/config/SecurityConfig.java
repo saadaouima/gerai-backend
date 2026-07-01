@@ -16,11 +16,38 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Configuration de la sécurité Spring Security pour l'analytics-service.
+ *
+ * {@code @Configuration} : déclare cette classe comme source de beans Spring.
+ * {@code @EnableWebSecurity} : active la configuration de sécurité web Spring Security.
+ * {@code @EnableMethodSecurity} : active les annotations de sécurité au niveau des méthodes
+ * ({@code @PreAuthorize}, {@code @PostAuthorize}, etc.).
+ *
+ * Politique d'accès :
+ * <ul>
+ *   <li>/internal/** : accès public (communication inter-services sans JWT)</li>
+ *   <li>/api/analytics/**, /api/reports/**, /api/admin/** : authentification requise</li>
+ * </ul>
+ * Les rôles Keycloak ({@code realm_access.roles}) sont convertis en {@code ROLE_XXX}
+ * via le convertisseur JWT personnalisé.
+ *
+ * @since 1.0
+ */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
 
+    /**
+     * Définit la chaîne de filtres de sécurité HTTP.
+     * Configure : désactivation CSRF, politique CORS, règles d'autorisation
+     * et le serveur de ressources OAuth2 basé sur JWT Keycloak.
+     *
+     * @param http le constructeur de configuration HTTP de Spring Security
+     * @return la chaîne de filtres de sécurité configurée
+     * @throws Exception en cas d'erreur de configuration
+     */
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
@@ -61,6 +88,13 @@ public class SecurityConfig {
         return converter;
     }
 
+    /**
+     * Configure la source CORS pour autoriser les requêtes depuis le frontend Angular
+     * (http://localhost:4200). Autorise toutes les méthodes HTTP standards et tous les en-têtes,
+     * avec support des credentials.
+     *
+     * @return la source de configuration CORS enregistrée sur tous les chemins ({@code /**})
+     */
     @Bean
     public CorsConfigurationSource corsSource() {
         CorsConfiguration cfg = new CorsConfiguration();

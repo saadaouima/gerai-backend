@@ -16,15 +16,51 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.web.socket.config.annotation.*;
 
+/**
+ * Configuration du broker de messages STOMP sur WebSocket.
+ * <p>
+ * {@code @Configuration} : déclare cette classe comme source de beans Spring.<br>
+ * {@code @EnableWebSocketMessageBroker} : active l'infrastructure de messagerie
+ * WebSocket avec broker STOMP intégré.<br>
+ * {@code @RequiredArgsConstructor} : injecte {@link JwtDecoder} et {@link JdbcTemplate}
+ * via constructeur Lombok.
+ * </p>
+ * <p>
+ * Destinations STOMP exposées :
+ * <ul>
+ *   <li>{@code /user/queue/notifications} — file personnelle par employé
+ *       (routage via principal STOMP = {@code EMPLOYEE_ID}).</li>
+ *   <li>{@code /topic/notifications.{role}} — broadcast par rôle (ADMIN, CHEF, EMPLOYE).</li>
+ *   <li>{@code /topic/employee.{id}} — fallback par ID employé.</li>
+ * </ul>
+ * Le principal STOMP est résolu à partir du token JWT Bearer présent dans le frame
+ * STOMP CONNECT, avec repli sur une requête SQL si le claim {@code employee_id} est absent.
+ * </p>
+ *
+ * @since 1.0
+ */
 @Slf4j
 @Configuration
 @EnableWebSocketMessageBroker
 @RequiredArgsConstructor
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
+    /** Décodeur JWT Keycloak utilisé pour valider le token Bearer du frame STOMP CONNECT. */
     private final JwtDecoder   jwtDecoder;
+
+    /** Template JDBC pour la résolution de l'EMPLOYEE_ID via la table EMPLOYEES en fallback. */
     private final JdbcTemplate jdbcTemplate;
 
+    /**
+     * Configure le broker de messages STOMP simple en mémoire.
+     * <p>
+     * Destinations de souscription : {@code /topic} (broadcast) et {@code /queue} (file personnelle).<br>
+     * Préfixe des destinations applicatives : {@code /app} (messages traités par {@code @MessageMapping}).<br>
+     * Préfixe des destinations utilisateur : {@code /user} (routage vers un utilisateur spécifique).
+     * </p>
+     *
+     * @param config le registre de configuration du broker de messages
+     */
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
         config.enableSimpleBroker("/topic", "/queue");
@@ -32,6 +68,16 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         config.setUserDestinationPrefix("/user");
     }
 
+    /**
+     * Enregistre l'endpoint WebSocket natif {@code /ws-notifications} accessible
+     * par le frontend Angular via RxStomp (WebSocket natif, sans SockJS).
+     * <p>
+     * Toutes les origines sont autorisées ({@code *}) en développement ;
+     * à restreindre en production.
+     * </p>
+     *
+     * @param registry le registre des endpoints STOMP
+     */
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws-notifications")
@@ -40,14 +86,23 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     }
 
     /**
-     * Reads the Bearer token from the STOMP CONNECT frame and sets the session
-     * principal to the Oracle EMPLOYEE_ID so that convertAndSendToUser() can
-     * route the message to the right WebSocket session.
+     * Intercepte le canal entrant STOMP pour authentifier les connexions WebSocket.
+     * <p>
+     * Lors de la réception d'un frame STOMP {@code CONNECT}, le token Bearer est extrait
+     * de l'en-tête {@code Authorization}, décodé via Keycloak, puis l'identifiant Oracle
+     * {@code EMPLOYEE_ID} est résolu et défini comme principal de la session STOMP.
+     * Ce principal permet à {@code convertAndSendToUser()} de router les messages
+     * vers le bon client WebSocket.
+     * </p>
+     * <p>
+     * Ordre de résolution du principal :
+     * <ol>
+     *   <li>Claim JWT {@code employee_id} (chemin rapide, nécessite un mapper Keycloak custom).</li>
+     *   <li>Requête SQL {@code EMPLOYEES.USER_ID = sub} (fallback sans mapper Keycloak).</li>
+     * </ol>
+     * </p>
      *
-     * Resolution order:
-     *  1. employee_id JWT claim (fast – requires a Keycloak custom mapper).
-     *  2. DB lookup on EMPLOYEES.USER_ID = Keycloak sub (works without any
-     *     Keycloak mapper because notification-service shares the same Oracle DB).
+     * @param registration le registre de configuration du canal entrant
      */
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
@@ -78,9 +133,20 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     }
 
     /**
-     * Resolves the Oracle EMPLOYEE_ID string to use as the STOMP session principal.
-     * 1. Reads the employee_id custom JWT claim (no DB hit, preferred).
-     * 2. Falls back to querying EMPLOYEES.USER_ID = Keycloak sub.
+     * Résout l'identifiant Oracle {@code EMPLOYEE_ID} à utiliser comme principal
+     * de la session STOMP à partir d'un token JWT Keycloak décodé.
+     * <p>
+     * Stratégie (dans l'ordre) :
+     * <ol>
+     *   <li>Lecture du claim JWT {@code employee_id} (sans accès base de données, préféré).</li>
+     *   <li>Requête SQL {@code SELECT EMPLOYEE_ID FROM EMPLOYEES WHERE USER_ID = :sub}
+     *       en fallback si le claim est absent.</li>
+     * </ol>
+     * </p>
+     *
+     * @param jwt le token JWT Keycloak décodé et validé
+     * @return l'identifiant Oracle de l'employé sous forme de chaîne,
+     *         ou {@code null} si la résolution échoue
      */
     private String resolveEmployeeId(Jwt jwt) {
         Object empIdClaim = jwt.getClaim("employee_id");

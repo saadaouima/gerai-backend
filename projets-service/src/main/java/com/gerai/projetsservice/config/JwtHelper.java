@@ -10,11 +10,31 @@ import org.springframework.stereotype.Component;
 
 import java.util.*;
 
+/**
+ * Utilitaire Spring pour extraire les informations métier depuis un JWT Keycloak.
+ * <p>
+ * Implémente {@link JwtHelperInterface} et fournit trois stratégies de résolution
+ * de l'identifiant employé (employee_id) :
+ * <ol>
+ *   <li>Claim personnalisé {@code employee_id} configuré dans Keycloak.</li>
+ *   <li>Recherche Oracle par {@code USER_ID = JWT.sub}.</li>
+ *   <li>Recherche Oracle par {@code EMAIL = JWT.email} avec synchronisation automatique de {@code USER_ID}.</li>
+ * </ol>
+ * </p>
+ * <p>
+ * {@code @Component} : enregistre ce composant dans le contexte Spring.<br>
+ * {@code @RequiredArgsConstructor} : injection par constructeur via Lombok.<br>
+ * {@code @Slf4j} : journalisation SLF4J via Lombok.
+ * </p>
+ *
+ * @since 1.0
+ */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class JwtHelper implements JwtHelperInterface {
 
+    /** Template JDBC pour les requêtes Oracle de résolution d'identité. */
     private final JdbcTemplate jdbc;
 
     /**
@@ -73,11 +93,26 @@ public class JwtHelper implements JwtHelperInterface {
             " — vérifiez EMPLOYEES.USER_ID ou configurez le claim employee_id dans Keycloak");
     }
 
+    /**
+     * Extrait l'adresse email de l'utilisateur depuis le claim {@code email} du JWT.
+     *
+     * @param auth le contexte d'authentification courant
+     * @return l'adresse email, ou {@code null} si le JWT est absent ou ne contient pas le claim
+     */
     public String getEmail(Authentication auth) {
         Jwt jwt = extractJwt(auth);
         return jwt != null ? jwt.getClaimAsString("email") : null;
     }
 
+    /**
+     * Retourne la liste des rôles Keycloak de l'utilisateur authentifié.
+     * <p>
+     * Les rôles sont extraits du claim {@code realm_access.roles} du JWT.
+     * </p>
+     *
+     * @param auth le contexte d'authentification courant
+     * @return liste immuable des rôles, vide si le JWT est absent ou si le claim est manquant
+     */
     public List<String> getRoles(Authentication auth) {
         Jwt jwt = extractJwt(auth);
         if (jwt == null) return List.of();
@@ -88,11 +123,44 @@ public class JwtHelper implements JwtHelperInterface {
         return roles != null ? List.copyOf(roles) : List.of();
     }
 
+    /**
+     * Vérifie si l'utilisateur authentifié possède le rôle {@code CHEF}.
+     *
+     * @param auth le contexte d'authentification courant
+     * @return {@code true} si le rôle CHEF est présent
+     */
     public boolean isChef(Authentication auth)      { return getRoles(auth).contains("CHEF");  }
+
+    /**
+     * Vérifie si l'utilisateur authentifié possède le rôle {@code RH}.
+     *
+     * @param auth le contexte d'authentification courant
+     * @return {@code true} si le rôle RH est présent
+     */
     public boolean isRh(Authentication auth)        { return getRoles(auth).contains("RH");    }
+
+    /**
+     * Vérifie si l'utilisateur authentifié possède le rôle {@code ADMIN}.
+     *
+     * @param auth le contexte d'authentification courant
+     * @return {@code true} si le rôle ADMIN est présent
+     */
     public boolean isAdmin(Authentication auth)     { return getRoles(auth).contains("ADMIN"); }
+
+    /**
+     * Vérifie si l'utilisateur est administrateur ou responsable RH.
+     *
+     * @param auth le contexte d'authentification courant
+     * @return {@code true} si le rôle RH ou ADMIN est présent
+     */
     public boolean isAdminOrRh(Authentication auth) { return isRh(auth) || isAdmin(auth);      }
 
+    /**
+     * Extrait le token JWT depuis un {@link org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken}.
+     *
+     * @param auth le contexte d'authentification
+     * @return le JWT, ou {@code null} si l'authentification n'est pas de type JWT
+     */
     private Jwt extractJwt(Authentication auth) {
         if (auth instanceof JwtAuthenticationToken t) return t.getToken();
         return null;

@@ -3,12 +3,14 @@ package com.gerai.projetsservice.dto;
 import lombok.*;
 
 /**
- * DTO Kafka publié par projet-service vers notification-service.
+ * DTO Kafka publié par {@code projets-service} vers {@code notification-service}.
+ * <p>
+ * Doit correspondre exactement aux champs de {@code NotificationEvent} dans
+ * {@code notification-service} (désérialisation JSON par nom de champ).
+ * Topic cible : {@code notification-events} (même topic que {@code demandes-service}).
+ * </p>
  *
- * DOIT correspondre EXACTEMENT aux champs de
- * NotificationEvent dans notification-service (désérialisation JSON par nom).
- *
- * Topic cible : notification-events (même topic que demandes-service)
+ * @since 1.0
  */
 @Data
 @Builder
@@ -65,6 +67,7 @@ public class NotificationEvent {
     /** Filtre côté consumer pour ne traiter que les events pertinents */
     private String sourceService;
 
+    /** Indique si une notification par email doit être envoyée en complément de la notification in-app. */
     private Boolean sendEmail;
 
     /** Rôle destinataire pour broadcast (ADMIN, CHEF, EMPLOYE). Utilisé quand employeeId est null. */

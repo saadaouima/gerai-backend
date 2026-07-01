@@ -12,8 +12,19 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * Repository Oracle pour la gestion des notifications.
- * Adapté à la nouvelle structure basée sur EMPLOYEE_ID.
+ * Repository Spring Data JPA pour la persistance et la récupération des notifications
+ * depuis la table Oracle {@code NOTIFICATIONS}.
+ * <p>
+ * {@code @Repository} : marque cette interface comme composant Spring de la couche
+ * d’accès aux données et active la traduction des exceptions JPA en exceptions Spring.
+ * Étend {@link JpaRepository} pour bénéficier des opérations CRUD standard.
+ * </p>
+ * <p>
+ * Les requêtes personnalisées combinent les notifications personnelles ({@code EMPLOYEE_ID})
+ * et les broadcasts de rôle ({@code ROLE}) afin d’exposer une vue unifiée à l’employé connecté.
+ * </p>
+ *
+ * @since 1.0
  */
 @Repository
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
@@ -23,24 +34,43 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     /* ───────────────────────────────────────────── */
 
     /**
-     * Notifications d’un employé (triées par date décroissante).
+     * Retourne toutes les notifications personnelles d’un employé,
+     * triées par date de création décroissante.
+     *
+     * @param employeeId l’identifiant Oracle de l’employé destinataire
+     * @return la liste des notifications personnelles de l’employé
      */
     List<Notification> findByEmployeeIdOrderByCreatedAtDesc(Long employeeId);
 
     /**
-     * Notifications personnelles + broadcasts pour ce rôle (triées par date décroissante).
+     * Retourne les notifications personnelles de l’employé ainsi que les broadcasts
+     * destinés à son rôle, triées par date de création décroissante.
+     * Utilisé par l’endpoint principal {@code GET /api/notifications}.
+     *
+     * @param employeeId l’identifiant Oracle de l’employé destinataire
+     * @param role       le rôle de l’employé (ADMIN, CHEF ou EMPLOYE) pour inclure les broadcasts
+     * @return la liste unifiée des notifications personnelles et de rôle
      */
     @Query("SELECT n FROM Notification n WHERE n.employeeId = :employeeId OR n.role = :role ORDER BY n.createdAt DESC")
     List<Notification> findByEmployeeOrRole(@Param("employeeId") Long employeeId,
                                             @Param("role") String role);
 
     /**
-     * Notifications NON LUES d’un employé.
+     * Retourne uniquement les notifications non lues d’un employé,
+     * triées par date de création décroissante.
+     * Utilisé par l’endpoint {@code GET /api/notifications/unread}.
+     *
+     * @param employeeId l’identifiant Oracle de l’employé destinataire
+     * @return la liste des notifications non lues de l’employé
      */
     List<Notification> findByEmployeeIdAndIsReadFalseOrderByCreatedAtDesc(Long employeeId);
 
     /**
-     * Compter les notifications non lues.
+     * Compte le nombre de notifications non lues d’un employé.
+     * Utilisé pour alimenter le badge de notification de l’interface Angular.
+     *
+     * @param employeeId l’identifiant Oracle de l’employé
+     * @return le nombre total de notifications non lues
      */
     long countByEmployeeIdAndIsReadFalse(Long employeeId);
 
@@ -50,8 +80,13 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     /* ───────────────────────────────────────────── */
 
     /**
-     * Marquer toutes les notifications non lues comme lues.
-     * Retourne le nombre de lignes impactées.
+     * Marque toutes les notifications non lues de l’employé (personnelles et de son rôle)
+     * comme lues en positionnant {@code isRead = true} et l’horodatage de lecture.
+     *
+     * @param employeeId l’identifiant Oracle de l’employé
+     * @param role       le rôle de l’employé pour inclure les broadcasts non lus
+     * @param readAt     l’horodatage de lecture à enregistrer
+     * @return le nombre de lignes effectivement mises à jour
      */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Transactional
@@ -72,7 +107,10 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     /* ───────────────────────────────────────────── */
 
     /**
-     * Supprimer toutes les notifications d’un employé.
+     * Supprime toutes les notifications personnelles d’un employé.
+     * Utilisé par l’endpoint {@code DELETE /api/notifications}.
+     *
+     * @param employeeId l’identifiant Oracle de l’employé dont les notifications sont supprimées
      */
     @Transactional
     void deleteByEmployeeId(Long employeeId);

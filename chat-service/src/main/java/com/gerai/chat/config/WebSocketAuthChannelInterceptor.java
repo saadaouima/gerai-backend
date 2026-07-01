@@ -17,25 +17,50 @@ import java.security.Principal;
 import java.util.Optional;
 
 /**
- * Intercepteur STOMP.
+ * Intercepteur de canal STOMP chargé de l'authentification des connexions WebSocket.
+ * <p>
+ * {@code @Component} : déclare ce bean comme composant Spring détectable par le scan de composants.
+ * <br>
+ * {@code ChannelInterceptor} : interface Spring Messaging permettant d'intercepter les messages
+ * transitant par un canal, ici le canal entrant STOMP.
+ * <p>
+ * Lors d'une trame {@code CONNECT} STOMP, cet intercepteur :
+ * <ol>
+ *   <li>Extrait le JWT depuis l'en-tête STOMP {@code token} ou {@code Authorization: Bearer ...}.</li>
+ *   <li>Décode le payload Base64 du JWT pour en extraire :
+ *     <ul>
+ *       <li>{@code sub} → UUID Keycloak (keycloakId)</li>
+ *       <li>{@code employee_id} → ID Oracle de l'employé (si absent, résolu depuis {@code EMPLOYEES.USER_ID})</li>
+ *       <li>{@code name} / {@code preferred_username} → nom d'affichage</li>
+ *     </ul>
+ *   </li>
+ *   <li>Injecte un {@link StompPrincipal} enrichi dans l'accesseur de la trame.</li>
+ * </ol>
+ * <p>
+ * {@code getName()} du principal retourne l'ID Oracle (numérique) afin que le routing STOMP
+ * {@code /user/{id}/queue/...} corresponde aux identifiants utilisés par
+ * {@code ChatController#broadcastToConversation()}.
  *
- * Extrait du JWT :
- *  - sub         → keycloakId (UUID)
- *  - employee_id → ID Oracle ; si absent, résolu depuis EMPLOYEES.USER_ID via DB
- *  - name / preferred_username → nom d'affichage
- *
- * getName() retourne toujours l'ID Oracle (numérique) pour que le routing STOMP
- * /user/{id}/queue/... corresponde à ce que broadcastToConversation() envoie.
+ * @since 1.0
  */
 @Slf4j
 @Component
 public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 
-    // @Lazy to avoid potential circular dependency through WebSocketConfig
+    // @Lazy pour éviter la dépendance circulaire potentielle via WebSocketConfig
     @Lazy
     @Autowired
     private KeycloakAdminService keycloakAdminService;
 
+    /**
+     * Intercepte chaque message avant son envoi sur le canal.
+     * Pour les trames STOMP {@code CONNECT}, extrait et valide le JWT
+     * puis associe un {@link StompPrincipal} à la session WebSocket.
+     *
+     * @param message le message STOMP entrant
+     * @param channel le canal de messagerie cible
+     * @return le message (potentiellement enrichi avec le principal), jamais {@code null}
+     */
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
         StompHeaderAccessor accessor =
@@ -62,6 +87,21 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
         return message;
     }
 
+    /**
+     * Décode le JWT et extrait les informations d'identité nécessaires au routing STOMP.
+     * <p>
+     * Ordre de résolution de l'employee_id :
+     * <ol>
+     *   <li>Claim {@code employee_id} présent dans le JWT.</li>
+     *   <li>Requête {@code EMPLOYEES.USER_ID} via {@link KeycloakAdminService}.</li>
+     *   <li>Utilisation du UUID Keycloak en dernier recours (la connexion WS réussit
+     *       mais l'envoi de messages échouera).</li>
+     * </ol>
+     *
+     * @param token le jeton JWT brut (sans préfixe "Bearer ")
+     * @return un enregistrement {@link TokenInfo} contenant keycloakId, employeeId et nom
+     * @throws RuntimeException si le JWT est mal formé ou illisible
+     */
     private TokenInfo extractTokenInfo(String token) {
         try {
             String[] parts = token.split("\\.");
@@ -122,29 +162,51 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
     private record TokenInfo(String keycloakId, String employeeId, String nom) {}
 
     /**
-     * Principal STOMP enrichi avec l'employee_id Oracle.
-     *
-     * getName() retourne le UUID Keycloak (sub) — utilisé par STOMP pour
-     * le routing /user/{name}/queue/... côté Angular.
-     *
-     * getEmployeeId() retourne l'ID Oracle — utilisé par ChatService.
+     * Principal STOMP enrichi avec les données d'identité Oracle et Keycloak.
+     * <p>
+     * Implémente {@link java.security.Principal} pour s'intégrer dans le mécanisme
+     * de sécurité Spring Messaging.
+     * <p>
+     * {@code getName()} retourne l'ID Oracle de l'employé (utilisé par STOMP pour
+     * le routing {@code /user/{id}/queue/...} côté Angular et backend).
+     * <br>
+     * {@code getEmployeeId()} retourne le même ID Oracle — utilisé par {@link com.gerai.chat.service.ChatService}.
+     * <br>
+     * {@code getNom()} retourne le nom d'affichage extrait du JWT.
      */
     public static class StompPrincipal implements Principal {
 
+        /** UUID Keycloak (claim {@code sub}) de l'utilisateur connecté. */
         private final String keycloakId;
+
+        /** ID Oracle de l'employé (utilisé pour le routing STOMP et les opérations métier). */
         @Getter private final String employeeId;
+
+        /** Nom d'affichage extrait du JWT (claim {@code name} ou {@code preferred_username}). */
         @Getter private final String nom;
 
+        /**
+         * Construit un principal STOMP enrichi.
+         *
+         * @param keycloakId UUID Keycloak (claim {@code sub})
+         * @param employeeId ID Oracle de l'employé
+         * @param nom        nom d'affichage de l'utilisateur
+         */
         public StompPrincipal(String keycloakId, String employeeId, String nom) {
             this.keycloakId = keycloakId;
             this.employeeId = employeeId;
             this.nom        = nom;
         }
 
+        /**
+         * Retourne l'identifiant utilisé par STOMP pour le routing des messages personnels.
+         * Correspond à l'ID Oracle de l'employé, ce qui permet l'alignement avec
+         * {@code broadcastToConversation()} dans {@link com.gerai.chat.controller.ChatController}.
+         *
+         * @return l'ID Oracle de l'employé sous forme de chaîne
+         */
         @Override
         public String getName() {
-            // STOMP user routing keyed by Oracle employee_id (falls back to Keycloak UUID
-            // for users without an employee_id JWT claim, e.g. the first admin login)
             return employeeId;
         }
     }

@@ -7,10 +7,20 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * Entité mappée sur GERAI.LOAN_REQUESTS (12 colonnes).
- *
+ * Entité JPA représentant une demande de prêt/crédit soumise par un employé.
+ * Mappée sur la table Oracle {@code GERAI.LOAN_REQUESTS}.
+ * <p>
+ * Workflow multi-niveaux :
+ * EN_ATTENTE → (avis chef) → EN_ETUDE_DG → (vote comité) → VALIDEE_DG → (DG/RH) → APPROUVE | REFUSE.
+ * Si {@code needsCommission = false}, le crédit passe directement à VALIDEE_DG sans vote du comité.
+ * <p>
+ * Le vote du comité est géré par {@link com.gerai.demandesservice.service.ComiteService} et
+ * la décision finale par {@link com.gerai.demandesservice.service.DemandeService#decisionDg}.
+ * <p>
  * Statuts valides (CHECK Oracle) :
- *   EN_ATTENTE | EN_ETUDE | APPROUVE | REFUSE | REMBOURSE
+ *   EN_ATTENTE | EN_ETUDE | EN_ETUDE_DG | VALIDEE_DG | APPROUVE | REFUSE | REMBOURSE
+ *
+ * @since 1.0
  */
 @Entity
 @Table(name = "LOAN_REQUESTS")
@@ -124,9 +134,14 @@ public class LoanRequest {
     @Builder.Default
     private boolean needsCommission = true;
 
+    /** Horodatage de création de la demande — positionné par {@code @PrePersist}. */
     @Column(name = "CREATED_AT", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    /**
+     * Initialise {@code createdAt} à l'heure courante et le statut à {@code EN_ATTENTE} si null,
+     * avant l'insertion JPA.
+     */
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();

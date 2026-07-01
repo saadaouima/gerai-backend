@@ -24,39 +24,68 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * Service d'accès à l'API Admin Keycloak
+ * Service d'accès à l'API d'administration Keycloak et à la table Oracle {@code EMPLOYEES}.
+ * <p>
+ * {@code @Service} : déclare ce bean comme service Spring géré par le conteneur IoC.
+ * <br>
+ * {@code @Slf4j} (Lombok) : injecte un logger SLF4J pour la traçabilité des appels Keycloak.
+ * <p>
+ * Ce service centralise toutes les opérations nécessitant une interaction avec Keycloak Admin
+ * ou la table {@code EMPLOYEES} d'Oracle :
+ * <ul>
+ *   <li>Résolution du nom complet d'un employé depuis son ID Oracle (avec cache en mémoire).</li>
+ *   <li>Liste de tous les employés actifs pour la liste de contacts du chat.</li>
+ *   <li>Résolution de l'ID Oracle depuis un UUID Keycloak (avec auto-création si nécessaire).</li>
+ *   <li>Résolution de l'ID Oracle depuis un email.</li>
+ *   <li>Synchronisation de l'attribut {@code employee_id} dans Keycloak.</li>
+ *   <li>Récupération des sessions Keycloak actives pour le service de présence.</li>
+ * </ul>
+ * <p>
+ * L'injection de {@link PresenceService} est différée ({@code @Lazy}) pour briser le cycle de
+ * dépendance circulaire entre {@link PresenceService} et {@link KeycloakAdminService}.
+ *
+ * @since 1.0
  */
 @Slf4j
 @Service
 public class KeycloakAdminService {
 
+    /** URL du serveur Keycloak (ex. {@code http://localhost:8180/auth}), configurée via {@code keycloak.server-url}). */
     @Value("${keycloak.server-url}")
     private String serverUrl;
 
+    /** Nom du realm Keycloak de l'application (ex. {@code gerai}), configuré via {@code keycloak.realm}). */
     @Value("${keycloak.realm}")
     private String realm;
 
+    /** Nom d'utilisateur de l'administrateur Keycloak, configuré via {@code keycloak.admin-username}). */
     @Value("${keycloak.admin-username}")
     private String adminUsername;
 
+    /** Mot de passe de l'administrateur Keycloak, configuré via {@code keycloak.admin-password}). */
     @Value("${keycloak.admin-password}")
     private String adminPassword;
 
+    /** Identifiant du client Keycloak de l'application (ex. {@code gerai-client}), configuré via {@code keycloak.client-id}). */
     @Value("${keycloak.client-id}")
     private String clientId;
 
+    /** Instance cliente Keycloak Admin, créée à la demande et réutilisée (pattern lazy singleton). */
     private Keycloak keycloak;
 
+    /** Template JDBC pour les requêtes directes sur la base Oracle {@code EMPLOYEES}. */
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    // @Lazy breaks the mutual dependency: PresenceService → KeycloakAdminService (for Keycloak batch)
-    //                                     KeycloakAdminService → PresenceService (for estConnecte)
+    /**
+     * Service de présence, injecté avec {@code @Lazy} pour briser le cycle :
+     * {@code PresenceService} → {@code KeycloakAdminService} → {@code PresenceService}.
+     */
     @Lazy
     @Autowired
     private PresenceService presenceService;
 
-    /** Cache employee_id (Oracle) → nom complet */
+    /** Cache en mémoire : {@code employee_id} (Oracle Long) → nom complet de l'employé. */
     private final Map<Long, String> nomCache = new ConcurrentHashMap<>();
 
     /* ── API Publique ─────────────────────────────────── */
@@ -101,11 +130,16 @@ public class KeycloakAdminService {
      * Source primaire : table EMPLOYEES (Oracle). Keycloak est utilisé uniquement
      * pour remplir le champ keycloakId quand USER_ID n'est pas encore lié.
      */
-    public List<UserDTO> getAllUsers() {
+    public List<UserDTO> getAllUsers(Long excludeEmployeeId) {
         try {
-            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                "SELECT EMPLOYEE_ID, FIRST_NAME, LAST_NAME, EMAIL, USER_ID " +
-                "FROM EMPLOYEES WHERE STATUS = 'ACTIF' ORDER BY LAST_NAME, FIRST_NAME");
+            List<Map<String, Object>> rows = excludeEmployeeId != null
+                ? jdbcTemplate.queryForList(
+                    "SELECT EMPLOYEE_ID, FIRST_NAME, LAST_NAME, EMAIL, USER_ID " +
+                    "FROM EMPLOYEES WHERE STATUS = 'ACTIF' AND EMPLOYEE_ID != ? ORDER BY LAST_NAME, FIRST_NAME",
+                    excludeEmployeeId)
+                : jdbcTemplate.queryForList(
+                    "SELECT EMPLOYEE_ID, FIRST_NAME, LAST_NAME, EMAIL, USER_ID " +
+                    "FROM EMPLOYEES WHERE STATUS = 'ACTIF' ORDER BY LAST_NAME, FIRST_NAME");
 
             return rows.stream().map(r -> {
                 Long   empId     = r.get("EMPLOYEE_ID") != null ? ((Number) r.get("EMPLOYEE_ID")).longValue() : null;
@@ -155,7 +189,19 @@ public class KeycloakAdminService {
         }
     }
 
-    /** Fallback: build contact list from Keycloak when the DB query fails. */
+    /**
+     * Fallback : construit la liste des contacts directement depuis Keycloak
+     * lorsque la requête Oracle principale a échoué.
+     * <p>
+     * Pour chaque utilisateur Keycloak, tente de résoudre l'ID Oracle via :
+     * <ol>
+     *   <li>L'attribut {@code employee_id} dans Keycloak.</li>
+     *   <li>La colonne {@code USER_ID} dans {@code EMPLOYEES}.</li>
+     *   <li>L'email de l'utilisateur (avec auto-link si trouvé).</li>
+     * </ol>
+     *
+     * @return la liste des {@link UserDTO} construite depuis Keycloak, ou une liste vide en cas d'erreur
+     */
     private List<UserDTO> getAllUsersFromKeycloak() {
         try {
             return getClient().realm(realm).users().list()
@@ -236,6 +282,12 @@ public class KeycloakAdminService {
 
     /* ── Helpers ──────────────────────────────────────── */
 
+    /**
+     * Retourne le client Keycloak Admin, en le créant si nécessaire (lazy singleton synchronisé).
+     * Utilise les credentials de l'administrateur configurés via les propriétés {@code keycloak.*}.
+     *
+     * @return l'instance {@link Keycloak} prête à l'emploi (connectée au realm {@code master})
+     */
     private synchronized Keycloak getClient() {
         if (keycloak == null || keycloak.isClosed()) {
             keycloak = KeycloakBuilder.builder()
@@ -249,6 +301,13 @@ public class KeycloakAdminService {
         return keycloak;
     }
 
+    /**
+     * Extrait l'ID Oracle de l'employé depuis les attributs personnalisés d'un utilisateur Keycloak.
+     * Lit l'attribut {@code employee_id} et le convertit en {@code Long}.
+     *
+     * @param u la représentation Keycloak de l'utilisateur
+     * @return l'ID Oracle de l'employé, ou {@code null} si l'attribut est absent ou invalide
+     */
     private Long extractEmployeeId(UserRepresentation u) {
         if (u.getAttributes() == null) return null;
         List<String> vals = u.getAttributes().get("employee_id");
@@ -260,6 +319,13 @@ public class KeycloakAdminService {
         }
     }
 
+    /**
+     * Construit le nom complet d'un utilisateur Keycloak depuis ses attributs {@code firstName} et {@code lastName}.
+     * Utilise le {@code username} Keycloak si les deux noms sont vides.
+     *
+     * @param u la représentation Keycloak de l'utilisateur
+     * @return le nom complet formaté (ex. "Marie Dupont"), ou le username si les noms sont absents
+     */
     private String buildFullName(UserRepresentation u) {
         String prenom = u.getFirstName() != null ? u.getFirstName() : "";
         String nom = u.getLastName() != null ? u.getLastName() : "";
@@ -420,6 +486,10 @@ public class KeycloakAdminService {
         }
     }
 
+    /**
+     * Ferme proprement le client Keycloak Admin lors de l'arrêt du contexte Spring.
+     * Libère les ressources HTTP (connexions, tokens) associées à la session admin.
+     */
     @PreDestroy
     public void close() {
         if (keycloak != null && !keycloak.isClosed()) {

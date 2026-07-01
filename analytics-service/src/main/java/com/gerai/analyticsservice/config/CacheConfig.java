@@ -11,25 +11,38 @@ import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Configuration du cache Caffeine.
+ * Configuration du gestionnaire de cache Caffeine pour le service analytique.
  *
- * Noms de caches alignés EXACTEMENT avec les annotations @Cacheable
- * et @CacheEvict présentes dans StatsService :
+ * Noms de caches alignés EXACTEMENT avec les annotations {@code @Cacheable}
+ * et {@code @CacheEvict} présentes dans {@link com.gerai.analyticsservice.service.StatsService} :
+ * <ul>
+ *   <li>"dashboard"         → {@code getDashboard()}</li>
+ *   <li>"conge-stats"       → {@code getCongeStats()}</li>
+ *   <li>"formation-stats"   → {@code getFormationStats()}</li>
+ *   <li>"par-mois"          → {@code getDemandesParMoisEtType()}</li>
+ *   <li>"top-5-absences"    → {@code getTop5EmployesAbsences()}</li>
+ *   <li>"attrition-predictions" → {@code AttritionService.getPredictions()}</li>
+ *   <li>"attrition-summary"     → {@code AttritionService.getSummary()}</li>
+ * </ul>
  *
- *   "dashboard"         → getDashboard()
- *   "conge-stats"       → getCongeStats()
- *   "formation-stats"   → getFormationStats()
- *   "par-mois"          → getDemandesParMoisEtType()
- *   "top-5-absences"    → getTop5EmployesAbsences()
+ * {@code @Configuration} : déclare cette classe comme source de beans Spring.
+ * {@code @EnableCaching} : active le support des annotations de cache ({@code @Cacheable}, etc.)
+ * dans le contexte Spring. Les entrées expirent après 10 minutes d'écriture,
+ * avec une taille maximale de 500 entrées par région.
  *
- * CORRECTION : suppression de "stats-departement" et "demandes-employe"
- * qui n'ont PAS de @Cacheable dans StatsService (méthodes non cachées
- * volontairement car dépendent du rôle/deptId dynamique).
+ * @since 1.0
  */
 @Configuration
 @EnableCaching
 public class CacheConfig {
 
+    /**
+     * Crée et configure le gestionnaire de cache Caffeine.
+     * Toutes les régions partagent la même politique d'expiration :
+     * 10 minutes après écriture, avec un maximum de 500 entrées.
+     *
+     * @return l'instance configurée de {@link CacheManager}
+     */
     @Bean
     public CacheManager cacheManager() {
         CaffeineCacheManager manager = new CaffeineCacheManager();

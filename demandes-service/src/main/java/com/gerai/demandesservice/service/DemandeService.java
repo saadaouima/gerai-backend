@@ -30,16 +30,24 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Service principal du demandes-service GerAI.
+ * Service principal du demandes-service de la plateforme SYNAPSE.
+ * <p>
+ * {@code @Service} : enregistre cette classe comme bean Spring de la couche service.
+ * <p>
+ * Centralise la gestion des demandes RH sur les 5 tables Oracle :
+ * {@code LEAVE_REQUESTS}, {@code TRAINING_REQUESTS}, {@code LOAN_REQUESTS},
+ * {@code DOCUMENT_REQUESTS} et {@code AUTHORIZATION_REQUESTS}.
+ * <p>
+ * Stratégie de résolution d'identité (3 niveaux) :
+ * <ol>
+ *   <li>Claim JWT {@code sub} → {@code EMPLOYEES.USER_ID}</li>
+ *   <li>Claim JWT {@code email} → {@code EMPLOYEES.EMAIL}</li>
+ *   <li>Claim JWT {@code preferred_username} (comme email ou comme user_id)</li>
+ * </ol>
+ * Toutes les notifications sont envoyées de façon asynchrone sur Kafka
+ * (topic {@code notification-events}) via {@link #sendNotification}.
  *
- * Adapte l'ancien modèle (table DEMANDES unique) vers les 5 tables Oracle réelles :
- *   LEAVE_REQUESTS, TRAINING_REQUESTS, LOAN_REQUESTS,
- *   DOCUMENT_REQUESTS, AUTHORIZATION_REQUESTS
- *
- * Stratégie de résolution d'identité :
- *   1. Extrait le claim "sub" du JWT Keycloak
- *   2. Résout l'employee_id Oracle via EMPLOYEES.user_id = sub
- *   3. Fallback sur l'email si le sub ne résout pas
+ * @since 1.0
  */
 @Slf4j
 @Service
@@ -70,6 +78,16 @@ public class DemandeService {
        CRÉATION — dispatch selon TypeDemande
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Crée une demande RH du type spécifié dans {@link DemandeRequest#getType()}.
+     * Résout l'identifiant Oracle de l'employé depuis le JWT, puis dispatche
+     * vers la méthode de création spécifique (congé, formation, prêt, document ou autorisation).
+     *
+     * @param request les données de la demande à créer
+     * @param auth    contexte d'authentification Spring Security de l'employé connecté
+     * @return le DTO de la demande créée
+     * @throws IllegalStateException si l'identité de l'employé ne peut être résolue depuis le JWT
+     */
     @Transactional
     public DemandeResponse creerDemande(DemandeRequest request, Authentication auth) {
         Long employeeId = resolveEmployeeId(auth);
@@ -136,6 +154,18 @@ public class DemandeService {
         return toResponse(entity, empNom);
     }
 
+    /**
+     * Enregistre la décision du comité médical pour un congé longue maladie (type 12).
+     * Si approuvé, remet le congé en {@code EN_ATTENTE} pour le workflow normal.
+     * Si refusé, passe directement au statut {@code REFUSE}.
+     *
+     * @param id       identifiant de la demande de congé longue maladie
+     * @param decision décision médicale (approuvé/refusé + commentaire)
+     * @param auth     contexte d'authentification du médecin/RH qui enregistre la décision
+     * @return le congé mis à jour
+     * @throws IllegalArgumentException si la demande est introuvable
+     * @throws IllegalStateException    si la demande n'est pas en statut {@code EN_ETUDE_MEDICALE}
+     */
     @Transactional
     public DemandeResponse decisionMedicale(Long id, MedicalDecisionRequest decision, Authentication auth) {
         LeaveRequest entity = leaveRepo.findById(id)
@@ -284,6 +314,14 @@ public class DemandeService {
        LECTURE — par employé connecté
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Retourne toutes les demandes RH de l'employé connecté (toutes catégories confondues),
+     * triées par date de création décroissante.
+     *
+     * @param auth contexte d'authentification de l'employé connecté
+     * @return liste de toutes les demandes de l'employé
+     * @throws IllegalStateException si l'identité de l'employé ne peut être résolue depuis le JWT
+     */
     @Transactional(readOnly = true)
     public List<DemandeResponse> getMesDemandes(Authentication auth) {
         Long empId = resolveEmployeeId(auth);
@@ -310,6 +348,15 @@ public class DemandeService {
        LECTURE — espace Chef (demandes de son équipe)
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Retourne toutes les demandes RH de l'équipe du chef connecté (tous statuts),
+     * en fusionnant les résultats par hiérarchie (MANAGER_ID) et par projet.
+     * Si aucune demande n'est trouvée, un fallback par département est appliqué.
+     *
+     * @param auth contexte d'authentification du chef de service
+     * @return liste des demandes de l'équipe, triée par date de création décroissante
+     * @throws IllegalStateException si l'identité du chef ne peut être résolue
+     */
     @Transactional(readOnly = true)
     public List<DemandeResponse> getDemandesEquipe(Authentication auth) {
         Long managerEmpId = resolveEmployeeId(auth);
@@ -318,6 +365,8 @@ public class DemandeService {
         leaveRepo.findByManager(managerEmpId)
                 .forEach(e -> all.add(toResponse(e, null)));
         trainingRepo.findByManager(managerEmpId)
+                .forEach(e -> all.add(toResponse(e, null)));
+        loanRepo.findByManager(managerEmpId)
                 .forEach(e -> all.add(toResponse(e, null)));
         authRepo.findByManager(managerEmpId, "EN_ATTENTE")
                 .forEach(e -> all.add(toResponse(e, null)));
@@ -334,6 +383,14 @@ public class DemandeService {
         return all;
     }
 
+    /**
+     * Retourne uniquement les demandes en attente de validation par le chef connecté
+     * (statut Oracle {@code EN_ATTENTE}), en fusionnant hiérarchie et projet.
+     *
+     * @param auth contexte d'authentification du chef de service
+     * @return liste des demandes en attente de l'équipe
+     * @throws IllegalStateException si l'identité du chef ne peut être résolue
+     */
     @Transactional(readOnly = true)
     public List<DemandeResponse> getDemandesEnAttenteChef(Authentication auth) {
         Long managerEmpId = resolveEmployeeId(auth);
@@ -342,6 +399,8 @@ public class DemandeService {
         leaveRepo.findByManagerAndStatus(managerEmpId, "EN_ATTENTE")
                 .forEach(e -> all.add(toResponse(e, null)));
         trainingRepo.findByManagerAndStatus(managerEmpId, "EN_ATTENTE")
+                .forEach(e -> all.add(toResponse(e, null)));
+        loanRepo.findByManagerAndStatus(managerEmpId, "EN_ATTENTE")
                 .forEach(e -> all.add(toResponse(e, null)));
         authRepo.findByManagerAndStatus(managerEmpId, "EN_ATTENTE")
                 .forEach(e -> all.add(toResponse(e, null)));
@@ -352,6 +411,14 @@ public class DemandeService {
         return all;
     }
 
+    /**
+     * Fallback département : ajoute les demandes des collègues du même département
+     * lorsque MANAGER_ID n'est pas renseigné pour le chef.
+     *
+     * @param managerEmpId identifiant Oracle du chef (exclu de sa propre liste d'équipe)
+     * @param statusFilter filtre de statut Oracle optionnel ({@code null} = tous statuts)
+     * @param all          liste à enrichir avec les demandes du département
+     */
     private void addDeptFallback(Long managerEmpId, String statusFilter, List<DemandeResponse> all) {
         Long deptId = employeeRepo.findDeptIdByEmployeeId(managerEmpId);
         if (deptId == null) return;
@@ -365,6 +432,9 @@ public class DemandeService {
         trainingRepo.findByEmployeeIdIn(deptEmployees).stream()
                 .filter(e -> statusFilter == null || statusFilter.equals(e.getStatus()))
                 .forEach(e -> all.add(toResponse(e, null)));
+        loanRepo.findByEmployeeIdIn(deptEmployees).stream()
+                .filter(e -> statusFilter == null || statusFilter.equals(e.getStatus()))
+                .forEach(e -> all.add(toResponse(e, null)));
         authRepo.findByEmployeeIdIn(deptEmployees).stream()
                 .filter(e -> statusFilter == null || statusFilter.equals(e.getStatus()))
                 .forEach(e -> all.add(toResponse(e, null)));
@@ -374,6 +444,12 @@ public class DemandeService {
        LECTURE — espace RH (toutes demandes)
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Retourne l'ensemble des demandes RH toutes catégories confondues — vue globale RH/Admin.
+     * Récupère toutes les entrées des 5 tables Oracle et les trie par date de création décroissante.
+     *
+     * @return liste complète de toutes les demandes
+     */
     @Transactional(readOnly = true)
     public List<DemandeResponse> getToutesDemandes() {
         List<DemandeResponse> all = new ArrayList<>();
@@ -389,20 +465,36 @@ public class DemandeService {
         return all;
     }
 
-    /** Crédits en attente de validation finale Direction RH (statut VALIDEE_DG = avis favorable de la commission). */
+    /**
+     * Retourne les crédits en attente de validation finale par la Direction RH —
+     * statut Oracle {@code VALIDEE_DG} signifiant que la commission a rendu un avis favorable.
+     *
+     * @return liste des crédits en attente de décision finale de la Direction RH
+     */
     @Transactional(readOnly = true)
     public List<DemandeResponse> getCreditsEnAttenteDg() {
         return loanRepo.findByStatusOrderByCreatedAtDesc("VALIDEE_DG")
                 .stream().map(e -> toResponse(e, null)).toList();
     }
 
-    /** Historique DG : tous les crédits décidés (VALIDEE_DG + REJETEE). */
+    /**
+     * Retourne l'historique complet des crédits transmis ou traités par la Direction RH
+     * (statuts : {@code VALIDEE_DG}, {@code REJETEE}, {@code EN_ETUDE_DG}, {@code VALIDEE_RH}).
+     *
+     * @return liste de tous les crédits dans le périmètre DG/Direction RH
+     */
     @Transactional(readOnly = true)
     public List<DemandeResponse> getAllCredits() {
-        return loanRepo.findByStatusInOrderByCreatedAtDesc(List.of("VALIDEE_DG", "REJETEE", "EN_ETUDE_DG", "VALIDEE_RH"))
+        return loanRepo.findByStatusInOrderByCreatedAtDesc(List.of("EN_ETUDE_DG", "VALIDEE_DG", "APPROUVE", "REFUSE", "REFUSE_COMMISSION"))
                 .stream().map(e -> toResponse(e, null)).toList();
     }
 
+    /**
+     * Retourne les demandes en attente de validation finale par le service RH
+     * (statut correspondant à la 2ème étape selon chaque type : VALIDE_CHEF, APPROUVE_CHEF, EN_ATTENTE).
+     *
+     * @return liste des demandes en attente de validation RH
+     */
     @Transactional(readOnly = true)
     public List<DemandeResponse> getDemandesEnAttenteRh() {
         List<DemandeResponse> all = new ArrayList<>();
@@ -423,6 +515,19 @@ public class DemandeService {
        dispatch sur le bon repository selon le type
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Valide ou rejette une demande RH en appliquant le workflow métier adapté au type et au rôle du valideur.
+     * <p>
+     * Détermine automatiquement le statut cible Oracle selon le type de demande et le rôle de l'utilisateur
+     * (Chef → VALIDEE_CHEF, RH → VALIDEE_RH, refus → REJETEE), puis dispatche vers la méthode privée dédiée.
+     *
+     * @param requestId  identifiant de la demande à valider
+     * @param type       type de la demande (CONGE, FORMATION, PRET, DOCUMENT, AUTORISATION)
+     * @param validation nouveau statut souhaité et commentaire optionnel
+     * @param auth       contexte d'authentification du valideur (Chef ou RH)
+     * @return la demande mise à jour
+     * @throws IllegalArgumentException si la demande est introuvable
+     */
     @Transactional
     public DemandeResponse valider(Long requestId, TypeDemande type,
                                    ValidationRequest validation, Authentication auth) {
@@ -467,6 +572,20 @@ public class DemandeService {
    MÉTHODES DE VALIDATION PRIVÉES (CORRIGÉES)
    ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Valide ou rejette une demande de congé (table {@code LEAVE_REQUESTS}).
+     * Met à jour le statut Oracle et les champs d'approbation (chef ou RH) selon le rôle du valideur.
+     * Déclenche ensuite une notification à l'employé et, si le chef valide, une notification aux admins RH.
+     *
+     * @param id           identifiant de la demande de congé
+     * @param oracleStatus valeur Oracle du nouveau statut (ex : {@code VALIDE_CHEF})
+     * @param val          informations de validation (statut cible, commentaire)
+     * @param statutTarget statut API unifié après validation
+     * @param valideurId   identifiant Oracle de la personne qui valide
+     * @param isRh         {@code true} si le valideur est RH ou Admin, {@code false} si c'est un chef
+     * @param auth         contexte d'authentification Spring Security
+     * @return la demande de congé mise à jour
+     */
     private DemandeResponse validerConge(Long id, String oracleStatus, ValidationRequest val,
                                          StatutDemande statutTarget, Long valideurId, boolean isRh, Authentication auth) {
         LeaveRequest entity = leaveRepo.findById(id)
@@ -498,6 +617,20 @@ public class DemandeService {
         return toResponse(entity, null);
     }
 
+    /**
+     * Valide ou rejette une demande de formation (table {@code TRAINING_REQUESTS}).
+     * Met à jour le statut Oracle et les champs d'approbation selon le rôle du valideur.
+     * Déclenche une notification à l'employé et, si le chef valide, une notification aux admins RH.
+     *
+     * @param id           identifiant de la demande de formation
+     * @param oracleStatus valeur Oracle du nouveau statut (ex : {@code APPROUVE_CHEF})
+     * @param val          informations de validation (statut cible, commentaire)
+     * @param statutTarget statut API unifié après validation
+     * @param valideurId   identifiant Oracle de la personne qui valide
+     * @param isRh         {@code true} si le valideur est RH ou Admin, {@code false} si c'est un chef
+     * @param auth         contexte d'authentification Spring Security
+     * @return la demande de formation mise à jour
+     */
     private DemandeResponse validerFormation(Long id, String oracleStatus, ValidationRequest val,
                                              StatutDemande statutTarget, Long valideurId, boolean isRh, Authentication auth) {
         TrainingRequest entity = trainingRepo.findById(id)
@@ -526,6 +659,26 @@ public class DemandeService {
         return toResponse(entity, null);
     }
 
+    /**
+     * Traite une étape de validation dans le workflow multi-niveaux d'un crédit (table {@code LOAN_REQUESTS}).
+     * <p>
+     * Le statut cible Oracle est déterminé dynamiquement selon le statut courant du crédit et le rôle du valideur :
+     * <ul>
+     *   <li>Refus → statut {@code REFUSE}</li>
+     *   <li>RH valide un crédit {@code VALIDEE_DG} → statut {@code APPROUVE}</li>
+     *   <li>RH valide un crédit {@code EN_ATTENTE} → {@code EN_ETUDE_DG} ou {@code VALIDEE_DG}</li>
+     *   <li>Chef valide → {@code EN_ETUDE_DG} ou {@code VALIDEE_DG} selon {@code needsCommission}</li>
+     * </ul>
+     *
+     * @param id                   identifiant du crédit
+     * @param ignoredOracleStatus  statut Oracle calculé en amont (ignoré ici, recalculé dynamiquement)
+     * @param val                  informations de validation (statut cible, commentaire)
+     * @param statutTarget         statut API unifié souhaité (REJETEE ou autre)
+     * @param valideurId           identifiant Oracle de la personne qui valide
+     * @param isRh                 {@code true} si le valideur est RH ou Admin
+     * @param auth                 contexte d'authentification Spring Security
+     * @return le crédit mis à jour
+     */
     private DemandeResponse validerPret(Long id, String ignoredOracleStatus, ValidationRequest val,
                                         StatutDemande statutTarget, Long valideurId, boolean isRh, Authentication auth) {
         LoanRequest entity = loanRepo.findById(id)
@@ -579,7 +732,20 @@ public class DemandeService {
         return toResponse(entity, null);
     }
 
-    /** Décision finale de la Direction RH sur un crédit ayant reçu l'avis de la commission (VALIDEE_DG). */
+    /**
+     * Enregistre la décision finale de la Direction RH sur un crédit ayant reçu
+     * l'avis favorable de la commission (statut {@code VALIDEE_DG} ou {@code EN_ETUDE_DG}).
+     * <p>
+     * Si approuvé : passe au statut {@code APPROUVE}, enregistre le montant et les tranches.
+     * Si refusé : passe au statut {@code REFUSE} avec le motif de refus.
+     *
+     * @param id       identifiant du crédit (LOAN_REQUESTS.REQUEST_ID)
+     * @param decision décision DG (approuvé/refusé, montant, tranches, commentaire)
+     * @param auth     contexte d'authentification du Directeur Général ou de la Direction RH
+     * @return la demande de crédit mise à jour
+     * @throws IllegalArgumentException si le crédit est introuvable
+     * @throws IllegalStateException    si le crédit n'est pas en statut VALIDEE_DG ou EN_ETUDE_DG
+     */
     @Transactional
     public DemandeResponse decisionDg(Long id, com.gerai.demandesservice.dto.DgDecisionRequest decision,
                                       Authentication auth) {
@@ -629,6 +795,18 @@ public class DemandeService {
         return toResponse(entity, null);
     }
 
+    /**
+     * Traite une demande de document administratif (table {@code DOCUMENT_REQUESTS}).
+     * Met à jour le statut Oracle, l'identifiant et la date du gestionnaire RH ayant traité la demande.
+     *
+     * @param id           identifiant de la demande de document
+     * @param oracleStatus valeur Oracle du nouveau statut (ex : {@code EN_COURS}, {@code LIVRE}, {@code REFUSE})
+     * @param val          informations de validation (statut cible, commentaire)
+     * @param statutTarget statut API unifié après validation
+     * @param valideurId   identifiant Oracle du gestionnaire RH traitant la demande
+     * @param auth         contexte d'authentification Spring Security
+     * @return la demande de document mise à jour
+     */
     private DemandeResponse validerDocument(Long id, String oracleStatus, ValidationRequest val,
                                             StatutDemande statutTarget, Long valideurId, Authentication auth) {
         DocumentRequest entity = documentRepo.findById(id)
@@ -647,6 +825,18 @@ public class DemandeService {
         return toResponse(entity, null);
     }
 
+    /**
+     * Traite une demande d'autorisation de sortie (table {@code AUTHORIZATION_REQUESTS}).
+     * Met à jour le statut Oracle, l'identifiant et la date de la personne qui a approuvé/refusé.
+     *
+     * @param id           identifiant de la demande d'autorisation
+     * @param oracleStatus valeur Oracle du nouveau statut (ex : {@code APPROUVE}, {@code REFUSE})
+     * @param val          informations de validation (statut cible, commentaire)
+     * @param statutTarget statut API unifié après validation
+     * @param valideurId   identifiant Oracle de la personne validant l'autorisation
+     * @param auth         contexte d'authentification Spring Security
+     * @return la demande d'autorisation mise à jour
+     */
     private DemandeResponse validerAutorisation(Long id, String oracleStatus, ValidationRequest val,
                                                 StatutDemande statutTarget, Long valideurId, Authentication auth) {
         AuthorizationRequest entity = authRepo.findById(id)
@@ -668,6 +858,16 @@ public class DemandeService {
        HTTP — Notifications
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Notifie le chef hiérarchique de l'employé qu'une nouvelle demande a été soumise.
+     * Résout le chef en 3 niveaux : MANAGER_ID → projet → même département.
+     *
+     * @param empId     identifiant Oracle de l'employé auteur de la demande
+     * @param empNom    nom complet de l'employé (pour le message de notification)
+     * @param requestId identifiant de la demande créée
+     * @param type      type de la demande
+     * @param auth      contexte d'authentification (non utilisé directement, prévu pour extension)
+     */
     private void notifierChef(Long empId, String empNom, Long requestId,
                               TypeDemande type, Authentication auth) {
         try {
@@ -709,6 +909,16 @@ public class DemandeService {
         }
     }
 
+    /**
+     * Notifie tous les gestionnaires RH/Admin actifs qu'une nouvelle demande directe
+     * (document, crédit sans hiérarchie) a été soumise et est en attente de traitement.
+     *
+     * @param empId     identifiant Oracle de l'employé auteur de la demande
+     * @param empNom    nom complet de l'employé (pour le message de notification)
+     * @param requestId identifiant de la demande créée
+     * @param type      type de la demande
+     * @param auth      contexte d'authentification (non utilisé directement, prévu pour extension)
+     */
     private void notifierRh(Long empId, String empNom, Long requestId,
                             TypeDemande type, Authentication auth) {
         List<Long> adminIds;
@@ -742,7 +952,15 @@ public class DemandeService {
         log.info("[Notif] notifierRh : {} administrateur(s) notifié(s) pour ref={}", adminIds.size(), requestId);
     }
 
-    /** Notifie les admins RH après validation chef — demande en attente de validation finale. */
+    /**
+     * Notifie tous les gestionnaires RH/Admin actifs après validation chef, indiquant que
+     * la demande est en attente de validation finale RH.
+     *
+     * @param empId     identifiant Oracle de l'employé auteur de la demande
+     * @param empNom    nom complet de l'employé (pour le message de notification)
+     * @param requestId identifiant de la demande validée par le chef
+     * @param type      type de la demande
+     */
     private void notifierRhApresChef(Long empId, String empNom, Long requestId, TypeDemande type) {
         List<Long> adminIds;
         try {
@@ -775,6 +993,12 @@ public class DemandeService {
         log.info("[Notif] notifierRhApresChef : {} admin(s) notifié(s) pour ref={}", adminIds.size(), requestId);
     }
 
+    /**
+     * Retourne le libellé français d'un type de demande pour les messages de notification.
+     *
+     * @param type le type de demande
+     * @return libellé en français (ex : {@code crédit}, {@code congé}, {@code formation})
+     */
     private static String typeLabel(TypeDemande type) {
         return switch (type) {
             case PRET        -> "crédit";
@@ -785,6 +1009,18 @@ public class DemandeService {
         };
     }
 
+    /**
+     * Notifie l'employé du changement de statut de sa demande et envoie un événement analytics
+     * si applicable (congé ou refus).
+     *
+     * @param empId       identifiant Oracle de l'employé destinataire
+     * @param requestId   identifiant de la demande concernée
+     * @param type        type de la demande
+     * @param statutApi   statut API unifié de la demande après mise à jour
+     * @param oracleStatus valeur Oracle brute du statut (pour l'événement analytics)
+     * @param nbJours     nombre de jours concernés (pour les congés, {@code null} sinon)
+     * @param auth        contexte d'authentification du valideur (non utilisé directement)
+     */
     private void notifierEmploye(Long empId, Long requestId, TypeDemande type,
                                  StatutDemande statutApi, String oracleStatus,
                                  Integer nbJours, Authentication auth) {
@@ -824,6 +1060,13 @@ public class DemandeService {
         }
     }
 
+    /**
+     * Publie un événement de notification sur le topic Kafka {@code notification-events} de manière asynchrone.
+     * L'envoi est effectué dans un {@link java.util.concurrent.CompletableFuture} pour ne pas bloquer
+     * la transaction principale. Ignore silencieusement les événements sans {@code employeeId}.
+     *
+     * @param event l'événement de notification à publier
+     */
     private void sendNotification(NotificationEvent event) {
         if (event.getEmployeeId() == null) return;
         java.util.concurrent.CompletableFuture.runAsync(() -> {
@@ -845,6 +1088,17 @@ public class DemandeService {
         });
     }
 
+    /**
+     * Envoie un événement analytics via HTTP REST à l'analytics-service interne
+     * pour alimenter les tableaux de bord RH (congés approuvés, demandes refusées, etc.).
+     * Les erreurs sont loguées et ignorées (non bloquantes).
+     *
+     * @param empId       identifiant Oracle de l'employé concerné
+     * @param requestId   identifiant de la demande
+     * @param type        type de la demande
+     * @param oracleStatus valeur Oracle brute du statut final (ex : {@code VALIDE_RH}, {@code REJETEE})
+     * @param nbJours     nombre de jours concernés (pour les congés, {@code null} sinon)
+     */
     private void sendAnalyticsEvent(Long empId, Long requestId, TypeDemande type,
                                     String oracleStatus, Integer nbJours) {
         try {
@@ -873,7 +1127,15 @@ public class DemandeService {
 
     private static final int CONGES_ANNUELS_TOTAL = 30;
 
-    /** Solde de congés de l'employé connecté pour l'année en cours. */
+    /**
+     * Calcule le solde de congés annuels de l'employé connecté pour l'année en cours.
+     * Retourne : {@code soldeTotal} (30 jours), {@code soldeUtilise}, {@code soldeRestant},
+     * {@code demandesEnAttente}.
+     *
+     * @param auth contexte d'authentification de l'employé connecté
+     * @return map avec les données de solde de congés
+     * @throws IllegalStateException si l'identité de l'employé ne peut être résolue
+     */
     @Transactional(readOnly = true)
     public Map<String, Object> getCongesSolde(Authentication auth) {
         Long empId = resolveEmployeeId(auth);
@@ -891,14 +1153,26 @@ public class DemandeService {
         return solde;
     }
 
-    /** Toutes les demandes de congé avec un statut Oracle donné — vue RH. */
+    /**
+     * Retourne toutes les demandes de congé ayant un statut Oracle donné — vue RH.
+     *
+     * @param oracleStatus valeur brute du champ STATUS Oracle (ex : {@code EN_ETUDE_MEDICALE})
+     * @return liste des demandes de congé correspondant au statut
+     */
     @Transactional(readOnly = true)
     public List<DemandeResponse> getCongesParStatut(String oracleStatus) {
         return leaveRepo.findByStatus(oracleStatus)
                 .stream().map(e -> toResponse(e, null)).toList();
     }
 
-    /** Demandes de congé de l'employé connecté (type CONGE seulement). */
+    /**
+     * Retourne les demandes de congé de l'employé connecté (type CONGE seulement),
+     * triées par date de création décroissante.
+     *
+     * @param auth contexte d'authentification de l'employé connecté
+     * @return liste des demandes de congé de l'employé
+     * @throws IllegalStateException si l'identité de l'employé ne peut être résolue
+     */
     @Transactional(readOnly = true)
     public List<DemandeResponse> getMesConges(Authentication auth) {
         Long empId = resolveEmployeeId(auth);
@@ -907,7 +1181,17 @@ public class DemandeService {
                 .stream().map(e -> toResponse(e, nom)).toList();
     }
 
-    /** Congés de l'équipe chevauchant la plage [dateDebut, dateFin]. */
+    /**
+     * Retourne les congés de l'équipe du chef (ou de l'employé) qui chevauchent
+     * la plage de dates [{@code dateDebut}, {@code dateFin}].
+     * Les congés refusés et annulés sont exclus.
+     *
+     * @param auth      contexte d'authentification du chef ou de l'employé
+     * @param dateDebut date de début de la plage de recherche
+     * @param dateFin   date de fin de la plage de recherche
+     * @return liste des congés de l'équipe chevauchant la plage, ou liste vide si aucun manager trouvé
+     * @throws IllegalStateException si l'identité de l'utilisateur ne peut être résolue
+     */
     @Transactional(readOnly = true)
     public List<DemandeResponse> getCongesEquipe(Authentication auth,
                                                   LocalDate dateDebut,
@@ -920,17 +1204,30 @@ public class DemandeService {
                             || a.getAuthority().equals("ROLE_ADMIN"));
         Long managerId = isManager ? empId : employeeRepo.findManagerIdByEmployeeId(empId);
         if (managerId == null) return List.of();
-        return leaveRepo.findByManagerAndDateRange(
-                        managerId,
-                        dateDebut.toString(),
-                        dateFin.toString())
-                .stream().map(e -> toResponse(e, resolveNom(e.getEmployeeId()))).toList();
+        // findByManager merges MANAGER_ID hierarchy + project membership so team members
+        // without MANAGER_ID set (linked only via a project) are also included.
+        return leaveRepo.findByManager(managerId).stream()
+                .filter(l -> l.getStatus() != null
+                          && !l.getStatus().equals("REFUSE")
+                          && !l.getStatus().equals("ANNULE"))
+                .filter(l -> l.getStartDate() != null && l.getEndDate() != null
+                          && !l.getStartDate().isAfter(dateFin)
+                          && !l.getEndDate().isBefore(dateDebut))
+                .map(e -> toResponse(e, resolveNom(e.getEmployeeId())))
+                .toList();
     }
 
     /* ═══════════════════════════════════════════════════════
        LECTURE PAR ID
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Recherche une demande RH par son identifiant, quel que soit son type.
+     * La recherche est effectuée séquentiellement dans les 5 tables Oracle.
+     *
+     * @param id identifiant de la demande
+     * @return un {@link Optional} contenant la demande si trouvée, vide sinon
+     */
     @Transactional(readOnly = true)
     public Optional<DemandeResponse> getDemandeById(Long id) {
         Optional<LeaveRequest> leave = leaveRepo.findById(id);
@@ -955,6 +1252,14 @@ public class DemandeService {
        ANNULATION
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Annule une demande RH en passant son statut Oracle à {@code ANNULE}.
+     * Recherche séquentiellement dans les 5 tables Oracle.
+     *
+     * @param id identifiant de la demande à annuler
+     * @return la demande annulée
+     * @throws IllegalArgumentException si aucune demande ne correspond à cet identifiant
+     */
     @Transactional
     public DemandeResponse annulerDemande(Long id) {
         Optional<LeaveRequest> leave = leaveRepo.findById(id);
@@ -994,6 +1299,17 @@ public class DemandeService {
        VALIDATION GÉNÉRIQUE (auto-détection du type)
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Valide ou rejette une demande RH sans connaître son type à l'avance.
+     * Détecte automatiquement le type en cherchant l'identifiant dans les 5 tables Oracle,
+     * puis délègue à {@link #valider}.
+     *
+     * @param id         identifiant de la demande à traiter
+     * @param validation nouveau statut souhaité et commentaire optionnel
+     * @param auth       contexte d'authentification du valideur (Chef ou RH)
+     * @return la demande mise à jour
+     * @throws IllegalArgumentException si aucune demande ne correspond à cet identifiant
+     */
     @Transactional
     public DemandeResponse validerGenerique(Long id, ValidationRequest validation, Authentication auth) {
         TypeDemande type = detectType(id);
@@ -1001,6 +1317,12 @@ public class DemandeService {
         return valider(id, type, validation, auth);
     }
 
+    /**
+     * Détecte le type d'une demande en cherchant son identifiant dans les 5 tables Oracle.
+     *
+     * @param id identifiant de la demande
+     * @return le type détecté, ou {@code null} si aucune table ne contient cet identifiant
+     */
     private TypeDemande detectType(Long id) {
         if (leaveRepo.existsById(id))    return TypeDemande.CONGE;
         if (trainingRepo.existsById(id)) return TypeDemande.FORMATION;
@@ -1010,12 +1332,27 @@ public class DemandeService {
         return null;
     }
 
+    /**
+     * Résout le nom complet d'un employé depuis son identifiant Oracle.
+     * Retourne {@code null} en cas d'erreur ou d'identifiant inconnu.
+     *
+     * @param employeeId identifiant Oracle de l'employé
+     * @return nom complet de l'employé, ou {@code null}
+     */
     private String resolveNom(Long employeeId) {
         try { return employeeInfoHelper.findFullName(employeeId); } catch (Exception e) { return null; }
     }
 
+    /** Enregistrement interne regroupant les informations d'affichage d'un employé. */
     private record EmpInfo(String prenom, String nom, String photo) {}
 
+    /**
+     * Résout le prénom, le nom et la photo de profil d'un employé depuis son identifiant Oracle.
+     * Retourne des valeurs nulles en cas d'erreur.
+     *
+     * @param empId identifiant Oracle de l'employé
+     * @return enregistrement avec prénom, nom et URL de photo
+     */
     private EmpInfo resolveEmpInfo(Long empId) {
         if (empId == null) return new EmpInfo(null, null, null);
         try {
@@ -1028,6 +1365,13 @@ public class DemandeService {
         }
     }
 
+    /**
+     * Génère les initiales d'un employé à partir de son prénom et de son nom.
+     *
+     * @param prenom prénom de l'employé
+     * @param nom    nom de famille de l'employé
+     * @return chaîne de deux caractères en majuscules (ex : {@code AM} pour Alice Martin)
+     */
     private String initiales(String prenom, String nom) {
         char p = (prenom != null && !prenom.isEmpty()) ? Character.toUpperCase(prenom.charAt(0)) : '-';
         char n = (nom    != null && !nom.isEmpty())    ? Character.toUpperCase(nom.charAt(0))    : '-';
@@ -1039,10 +1383,18 @@ public class DemandeService {
        ═══════════════════════════════════════════════════════ */
 
     /**
-     * Résout l'employee_id Oracle depuis le JWT Keycloak.
-     * Niveau 1 : via user_id = sub (UUID Keycloak)
-     * Niveau 2 : via email
-     * Niveau 3 : via preferred_username (comme email ou comme user_id)
+     * Résout l'identifiant Oracle de l'employé depuis le JWT Keycloak en 3 niveaux :
+     * <ol>
+     *   <li>Claim {@code sub} → {@code EMPLOYEES.USER_ID}</li>
+     *   <li>Claim {@code email} → {@code EMPLOYEES.EMAIL}</li>
+     *   <li>Claim {@code preferred_username} (comme email ou comme UUID)</li>
+     * </ol>
+     * Toutes les requêtes passent par {@link EmployeeInfoHelper} en propagation
+     * {@code NOT_SUPPORTED} pour éviter de contaminer la transaction courante.
+     *
+     * @param auth contexte d'authentification Spring Security de l'utilisateur connecté
+     * @return l'identifiant Oracle de l'employé
+     * @throws IllegalStateException si aucun employé ACTIF ne correspond aux claims du JWT
      */
     private Long resolveEmployeeId(Authentication auth) {
         Jwt jwt = extractJwt(auth);
@@ -1076,7 +1428,14 @@ public class DemandeService {
                 "Aucun employé ACTIF trouvé pour sub=" + sub + " / email=" + email + " / username=" + username);
     }
 
-    /** Same as resolveEmployeeId but returns null instead of throwing — for nullable FK contexts (e.g. APPROVED_BY). */
+    /**
+     * Identique à {@link #resolveEmployeeId(Authentication)} mais retourne {@code null}
+     * au lieu de lever une exception — utilisé pour les contextes à FK nullable
+     * (ex : champ {@code APPROVED_BY} en base Oracle).
+     *
+     * @param auth contexte d'authentification Spring Security
+     * @return l'identifiant Oracle de l'employé, ou {@code null} si non résolu
+     */
     private Long tryResolveEmployeeId(Authentication auth) {
         try {
             return resolveEmployeeId(auth);
@@ -1086,12 +1445,24 @@ public class DemandeService {
         }
     }
 
+    /**
+     * Extrait le token JWT depuis le contexte d'authentification Spring Security.
+     *
+     * @param auth contexte d'authentification Spring Security
+     * @return le token JWT, ou {@code null} si l'authentification n'est pas un {@link JwtAuthenticationToken}
+     */
     private Jwt extractJwt(Authentication auth) {
         if (auth instanceof JwtAuthenticationToken jwtAuth) return jwtAuth.getToken();
         return null;
     }
 
-    /** Extrait le nom complet de l'agent connecté depuis les claims Keycloak. */
+    /**
+     * Extrait le nom complet de l'agent connecté depuis les claims Keycloak
+     * ({@code given_name} + {@code family_name}, ou {@code name}, ou {@code preferred_username}).
+     *
+     * @param auth contexte d'authentification Spring Security
+     * @return nom complet de l'agent, ou {@code null} si le JWT est absent
+     */
     private String extractFullNameFromToken(Authentication auth) {
         Jwt jwt = extractJwt(auth);
         if (jwt == null) return null;
@@ -1108,6 +1479,14 @@ public class DemandeService {
        Convertit chaque entité → DTO de réponse unifié
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Convertit une entité {@link com.gerai.demandesservice.model.LeaveRequest} en DTO de réponse unifié.
+     * Résout les informations de l'employé (prénom, nom, photo, initiales) et des valideurs (chef et RH).
+     *
+     * @param e          entité de demande de congé à convertir
+     * @param ignoredNom nom pré-résolu (ignoré — les infos employé sont rechargées depuis la base)
+     * @return DTO {@link DemandeResponse} complet pour exposition via API REST
+     */
     private DemandeResponse toResponse(LeaveRequest e, String ignoredNom) {
         EmpInfo emp      = resolveEmpInfo(e.getEmployeeId());
         String chefNom   = e.getApprovedBy()       != null ? resolveNom(e.getApprovedBy()) : null;
@@ -1147,6 +1526,14 @@ public class DemandeService {
                 .build();
     }
 
+    /**
+     * Convertit une entité {@link com.gerai.demandesservice.model.TrainingRequest} en DTO de réponse unifié.
+     * Résout les informations de l'employé et des valideurs (chef et RH).
+     *
+     * @param e          entité de demande de formation à convertir
+     * @param ignoredNom nom pré-résolu (ignoré — les infos employé sont rechargées depuis la base)
+     * @return DTO {@link DemandeResponse} complet pour exposition via API REST
+     */
     private DemandeResponse toResponse(TrainingRequest e, String ignoredNom) {
         EmpInfo emp    = resolveEmpInfo(e.getEmployeeId());
         String chefNom = e.getApprovedBy()       != null ? resolveNom(e.getApprovedBy()) : null;
@@ -1179,6 +1566,14 @@ public class DemandeService {
                 .build();
     }
 
+    /**
+     * Convertit une entité {@link com.gerai.demandesservice.model.LoanRequest} en DTO de réponse unifié.
+     * Résout les informations de l'employé et de l'ensemble des valideurs (RH, comité DG, direction finale).
+     *
+     * @param e          entité de demande de crédit à convertir
+     * @param ignoredNom nom pré-résolu (ignoré — les infos employé sont rechargées depuis la base)
+     * @return DTO {@link DemandeResponse} complet pour exposition via API REST
+     */
     private DemandeResponse toResponse(LoanRequest e, String ignoredNom) {
         EmpInfo emp      = resolveEmpInfo(e.getEmployeeId());
         String chefNom   = e.getApprovedByRhName();      // RH who sent to committee (stored in approvedByRhName)
@@ -1216,6 +1611,14 @@ public class DemandeService {
                 .build();
     }
 
+    /**
+     * Convertit une entité {@link com.gerai.demandesservice.model.DocumentRequest} en DTO de réponse unifié.
+     * Résout les informations de l'employé et du gestionnaire RH ayant traité la demande.
+     *
+     * @param e          entité de demande de document à convertir
+     * @param ignoredNom nom pré-résolu (ignoré — les infos employé sont rechargées depuis la base)
+     * @return DTO {@link DemandeResponse} complet pour exposition via API REST
+     */
     private DemandeResponse toResponse(DocumentRequest e, String ignoredNom) {
         EmpInfo emp  = resolveEmpInfo(e.getEmployeeId());
         String vNom  = e.getProcessedBy() != null ? resolveNom(e.getProcessedBy()) : null;
@@ -1241,6 +1644,14 @@ public class DemandeService {
                 .build();
     }
 
+    /**
+     * Convertit une entité {@link com.gerai.demandesservice.model.AuthorizationRequest} en DTO de réponse unifié.
+     * Résout les informations de l'employé et de la personne ayant approuvé ou refusé l'autorisation.
+     *
+     * @param e          entité de demande d'autorisation à convertir
+     * @param ignoredNom nom pré-résolu (ignoré — les infos employé sont rechargées depuis la base)
+     * @return DTO {@link DemandeResponse} complet pour exposition via API REST
+     */
     private DemandeResponse toResponse(AuthorizationRequest e, String ignoredNom) {
         EmpInfo emp  = resolveEmpInfo(e.getEmployeeId());
         String vNom  = e.getApprovedBy() != null ? resolveNom(e.getApprovedBy()) : null;

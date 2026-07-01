@@ -43,14 +43,17 @@ import java.time.LocalDateTime;
 @ToString
 public class AbsenceStats {
 
+    /** Clé primaire auto-générée (STAT_ID). */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "STAT_ID")
     private Long id;
 
+    /** Identifiant Oracle de l'employé (EMPLOYEES.employee_id). */
     @Column(name = "EMPLOYE_ID", nullable = false)
     private Long employeId;
 
+    /** Nom complet de l'employé, stocké pour éviter des jointures lors des rapports. */
     @Column(name = "EMPLOYE_NOM", length = 150)
     private String employeNom;
 
@@ -86,9 +89,15 @@ public class AbsenceStats {
     @Column(name = "NB_REFUSEES", nullable = false)
     private Integer nbRefusees = 0;
 
+    /** Date et heure de la dernière mise à jour de la ligne, gérée automatiquement par JPA. */
     @Column(name = "DATE_MISE_A_JOUR")
     private LocalDateTime dateMiseAJour;
 
+    /**
+     * Callback JPA exécuté automatiquement avant chaque insertion ({@code @PrePersist})
+     * et mise à jour ({@code @PreUpdate}). Met à jour le champ {@code dateMiseAJour}
+     * avec la date et l'heure courantes.
+     */
     @PrePersist
     @PreUpdate
     protected void onUpdate() {

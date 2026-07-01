@@ -61,10 +61,21 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
        COMPTAGES GLOBAUX — Vue GERAI.V_ALL_DEMANDES
        ═══════════════════════════════════════════════════════════ */
 
+    /**
+     * Compte le nombre total de demandes dans la vue V_ALL_DEMANDES (toutes tables confondues).
+     *
+     * @return le nombre total de demandes RH
+     */
     @Query(value = "SELECT COUNT(*) FROM GERAI.V_ALL_DEMANDES",
             nativeQuery = true)
     long countTotal();
 
+    /**
+     * Compte les demandes ayant un statut précis dans la vue V_ALL_DEMANDES.
+     *
+     * @param statut le statut à filtrer (ex : "EN_ATTENTE", "REFUSE", "VALIDE_RH")
+     * @return le nombre de demandes correspondant au statut donné
+     */
     @Query(value = """
             SELECT COUNT(*)
             FROM GERAI.V_ALL_DEMANDES
@@ -72,6 +83,12 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
             """, nativeQuery = true)
     long countByStatut(@Param("statut") String statut);
 
+    /**
+     * Retourne le comptage des demandes regroupées par type.
+     * Chaque ligne contient [TYPE_VAL (String), TOTAL (Number)].
+     *
+     * @return la liste des paires [type, total], triées par type
+     */
     @Query(value = """
             SELECT NVL(TYPE,'INCONNU') AS TYPE_VAL, COUNT(*) AS TOTAL
             FROM GERAI.V_ALL_DEMANDES
@@ -80,6 +97,12 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
             """, nativeQuery = true)
     List<Object[]> countGroupByType();
 
+    /**
+     * Retourne le comptage des demandes regroupées par statut.
+     * Chaque ligne contient [STATUT_VAL (String), TOTAL (Number)].
+     *
+     * @return la liste des paires [statut, total], triées par statut
+     */
     @Query(value = """
             SELECT NVL(STATUT,'INCONNU') AS STATUT_VAL, COUNT(*) AS TOTAL
             FROM GERAI.V_ALL_DEMANDES
@@ -88,6 +111,12 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
             """, nativeQuery = true)
     List<Object[]> countGroupByStatut();
 
+    /**
+     * Retourne le comptage mensuel des demandes.
+     * Chaque ligne contient [MOIS (String "YYYY-MM"), TOTAL (Number)].
+     *
+     * @return la liste des paires [mois, total], triées chronologiquement
+     */
     @Query(value = """
             SELECT TO_CHAR(DATE_CREATION,'YYYY-MM') AS MOIS, COUNT(*) AS TOTAL
             FROM GERAI.V_ALL_DEMANDES
@@ -97,6 +126,13 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
             """, nativeQuery = true)
     List<Object[]> countGroupByMois();
 
+    /**
+     * Retourne le comptage des demandes regroupées par mois ET par type.
+     * Chaque ligne contient [MOIS (String "YYYY-MM"), TYPE_VAL (String), TOTAL (Number)].
+     * Utilisé pour les graphiques de tendances multi-séries dans Angular.
+     *
+     * @return la liste des triplets [mois, type, total], triés par mois puis par type
+     */
     @Query(value = """
             SELECT TO_CHAR(DATE_CREATION,'YYYY-MM') AS MOIS,
                    NVL(TYPE,'INCONNU')              AS TYPE_VAL,
@@ -113,18 +149,38 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
        Statuts : EN_ATTENTE | VALIDE_CHEF | VALIDE_RH | REFUSE | ANNULE
        ═══════════════════════════════════════════════════════════ */
 
+    /**
+     * Compte le nombre total de demandes de congé dans LEAVE_REQUESTS.
+     *
+     * @return le nombre total de congés
+     */
     @Query(value = "SELECT COUNT(*) FROM GERAI.LEAVE_REQUESTS",
             nativeQuery = true)
     long countTotalConges();
 
+    /**
+     * Compte les congés validés par le RH (statut = VALIDE_RH).
+     *
+     * @return le nombre de congés validés
+     */
     @Query(value = "SELECT COUNT(*) FROM GERAI.LEAVE_REQUESTS WHERE STATUS = 'VALIDE_RH'",
             nativeQuery = true)
     long countCongesValides();
 
+    /**
+     * Compte les congés refusés (statut = REFUSE).
+     *
+     * @return le nombre de congés refusés
+     */
     @Query(value = "SELECT COUNT(*) FROM GERAI.LEAVE_REQUESTS WHERE STATUS = 'REFUSE'",
             nativeQuery = true)
     long countCongesRefuses();
 
+    /**
+     * Compte les congés en attente de validation (statuts EN_ATTENTE et VALIDE_CHEF).
+     *
+     * @return le nombre de congés en attente
+     */
     @Query(value = """
             SELECT COUNT(*)
             FROM GERAI.LEAVE_REQUESTS
@@ -132,6 +188,12 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
             """, nativeQuery = true)
     long countCongesEnAttente();
 
+    /**
+     * Calcule la durée moyenne des congés en jours (AVG de DAYS_COUNT).
+     * Retourne 0.0 si aucune donnée disponible (NVL Oracle).
+     *
+     * @return la durée moyenne des congés, arrondie à 2 décimales
+     */
     @Query(value = """
             SELECT NVL(ROUND(AVG(DAYS_COUNT), 2), 0)
             FROM GERAI.LEAVE_REQUESTS
@@ -139,6 +201,12 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
             """, nativeQuery = true)
     Double avgJoursConge();
 
+    /**
+     * Retourne le comptage mensuel des demandes de congé.
+     * Chaque ligne contient [MOIS (String "YYYY-MM"), TOTAL (Number)].
+     *
+     * @return la liste des paires [mois, total], triées chronologiquement
+     */
     @Query(value = """
             SELECT TO_CHAR(CREATED_AT,'YYYY-MM') AS MOIS, COUNT(*) AS TOTAL
             FROM GERAI.LEAVE_REQUESTS
@@ -153,18 +221,38 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
        Statuts : EN_ATTENTE | APPROUVE_CHEF | APPROUVE_RH | REFUSE | ANNULE
        ═══════════════════════════════════════════════════════════ */
 
+    /**
+     * Compte le nombre total de demandes de formation dans TRAINING_REQUESTS.
+     *
+     * @return le nombre total de formations demandées
+     */
     @Query(value = "SELECT COUNT(*) FROM GERAI.TRAINING_REQUESTS",
             nativeQuery = true)
     long countTotalFormations();
 
+    /**
+     * Compte les formations approuvées par le RH (statut = APPROUVE_RH).
+     *
+     * @return le nombre de formations approuvées
+     */
     @Query(value = "SELECT COUNT(*) FROM GERAI.TRAINING_REQUESTS WHERE STATUS = 'APPROUVE_RH'",
             nativeQuery = true)
     long countFormationsValidees();
 
+    /**
+     * Compte les formations refusées (statut = REFUSE).
+     *
+     * @return le nombre de formations refusées
+     */
     @Query(value = "SELECT COUNT(*) FROM GERAI.TRAINING_REQUESTS WHERE STATUS = 'REFUSE'",
             nativeQuery = true)
     long countFormationsRefusees();
 
+    /**
+     * Compte les formations en attente de validation (statuts EN_ATTENTE et APPROUVE_CHEF).
+     *
+     * @return le nombre de formations en attente
+     */
     @Query(value = """
             SELECT COUNT(*)
             FROM GERAI.TRAINING_REQUESTS
@@ -172,6 +260,12 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
             """, nativeQuery = true)
     long countFormationsEnAttente();
 
+    /**
+     * Calcule le budget total des formations approuvées par le RH (SUM d'ESTIMATED_COST).
+     * Retourne 0 si aucune formation approuvée (NVL Oracle).
+     *
+     * @return le budget total en dinars tunisiens
+     */
     @Query(value = """
             SELECT NVL(SUM(ESTIMATED_COST), 0)
             FROM GERAI.TRAINING_REQUESTS
@@ -179,6 +273,12 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
             """, nativeQuery = true)
     double sumBudgetFormations();
 
+    /**
+     * Calcule la durée moyenne des formations en jours (AVG de DURATION_DAYS).
+     * Retourne 0 si aucune donnée disponible (NVL Oracle).
+     *
+     * @return la durée moyenne des formations, arrondie à 2 décimales
+     */
     @Query(value = """
             SELECT NVL(ROUND(AVG(DURATION_DAYS), 2), 0)
             FROM GERAI.TRAINING_REQUESTS
@@ -186,6 +286,12 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
             """, nativeQuery = true)
     double avgDureeFormations();
 
+    /**
+     * Retourne le comptage mensuel des demandes de formation.
+     * Chaque ligne contient [MOIS (String "YYYY-MM"), TOTAL (Number)].
+     *
+     * @return la liste des paires [mois, total], triées chronologiquement
+     */
     @Query(value = """
             SELECT TO_CHAR(CREATED_AT,'YYYY-MM') AS MOIS, COUNT(*) AS TOTAL
             FROM GERAI.TRAINING_REQUESTS
@@ -199,6 +305,12 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
        KPIs TEMPS RÉEL
        ═══════════════════════════════════════════════════════════ */
 
+    /**
+     * Compte les employés distincts en congé validé aujourd'hui.
+     * SYSDATE doit être compris entre START_DATE et END_DATE du congé.
+     *
+     * @return le nombre d'employés absents aujourd'hui (globalement)
+     */
     @Query(value = """
             SELECT COUNT(DISTINCT EMPLOYEE_ID)
             FROM GERAI.LEAVE_REQUESTS
@@ -220,6 +332,11 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
             """, nativeQuery = true)
     long countAbsentsAujourdhuiParDept(@Param("deptId") Long deptId);
 
+    /**
+     * Compte le nombre total de projets actifs (statut = EN_COURS) dans toute l'organisation.
+     *
+     * @return le nombre de projets en cours
+     */
     @Query(value = "SELECT COUNT(*) FROM GERAI.PROJECTS WHERE STATUS = 'EN_COURS'",
             nativeQuery = true)
     long countProjetsActifs();
@@ -233,6 +350,11 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
             """, nativeQuery = true)
     long countProjetsActifsParDept(@Param("deptId") Long deptId);
 
+    /**
+     * Compte le nombre total de tâches non terminées (tous projets, tous statuts sauf TERMINE).
+     *
+     * @return le nombre de tâches ouvertes dans l'organisation
+     */
     @Query(value = "SELECT COUNT(*) FROM GERAI.TASKS WHERE STATUS <> 'TERMINE'",
             nativeQuery = true)
     long countTachesOuvertes();
@@ -305,6 +427,13 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
                   COMMENTAIRE_RH, DATE_CREATION
        ═══════════════════════════════════════════════════════════ */
 
+    /**
+     * Retourne la liste complète des demandes de congé pour le rapport global (tous départements).
+     * Colonnes : REQUESTID, MATRICULE, EMPLOYE_NOM, DEPARTEMENT, DATE_DEBUT, DATE_FIN,
+     * NB_JOURS, STATUT, MOTIF, COMMENTAIRE_RH, DATE_CREATION.
+     *
+     * @return la liste de toutes les demandes de congé triées par date de création décroissante
+     */
     @Query(value = """
             SELECT
                 lr.REQUEST_ID                                           AS REQUESTID,
@@ -315,16 +444,25 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
                 TO_CHAR(lr.END_DATE,    'DD/MM/YYYY')                  AS DATE_FIN,
                 NVL(lr.DAYS_COUNT, 0)                                   AS NB_JOURS,
                 lr.STATUS                                               AS STATUT,
+                NVL(rtc.LIBELLE, 'Congé annuel')                        AS TYPE_CONGE,
                 NVL(lr.REASON, '-')                                     AS MOTIF,
                 NVL(lr.REJECTION_REASON, '-')                           AS COMMENTAIRE_RH,
                 TO_CHAR(lr.CREATED_AT, 'DD/MM/YYYY HH24:MI')           AS DATE_CREATION
             FROM GERAI.LEAVE_REQUESTS lr
-            JOIN      GERAI.EMPLOYEES   e ON lr.EMPLOYEE_ID = e.EMPLOYEE_ID
-            LEFT JOIN GERAI.DEPARTMENTS d ON e.DEPT_ID      = d.DEPT_ID
+            JOIN      GERAI.EMPLOYEES        e   ON lr.EMPLOYEE_ID   = e.EMPLOYEE_ID
+            LEFT JOIN GERAI.DEPARTMENTS      d   ON e.DEPT_ID        = d.DEPT_ID
+            LEFT JOIN GERAI.REF_TYPES_CONGE  rtc ON lr.LEAVE_TYPE_ID = rtc.TYPE_ID
             ORDER BY lr.CREATED_AT DESC
             """, nativeQuery = true)
     List<Object[]> listeCongesForReport();
 
+    /**
+     * Retourne la liste des demandes de congé filtrées par département (pour les Chefs).
+     * Colonnes identiques à {@link #listeCongesForReport()}.
+     *
+     * @param deptId l'identifiant Oracle du département (DEPARTMENTS.dept_id)
+     * @return la liste des congés du département triés par date de création décroissante
+     */
     @Query(value = """
             SELECT
                 lr.REQUEST_ID                                           AS REQUESTID,
@@ -335,16 +473,55 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
                 TO_CHAR(lr.END_DATE,    'DD/MM/YYYY')                  AS DATE_FIN,
                 NVL(lr.DAYS_COUNT, 0)                                   AS NB_JOURS,
                 lr.STATUS                                               AS STATUT,
+                NVL(rtc.LIBELLE, 'Congé annuel')                        AS TYPE_CONGE,
                 NVL(lr.REASON, '-')                                     AS MOTIF,
                 NVL(lr.REJECTION_REASON, '-')                           AS COMMENTAIRE_RH,
                 TO_CHAR(lr.CREATED_AT, 'DD/MM/YYYY HH24:MI')           AS DATE_CREATION
             FROM GERAI.LEAVE_REQUESTS lr
-            JOIN GERAI.EMPLOYEES   e ON lr.EMPLOYEE_ID = e.EMPLOYEE_ID
-            JOIN GERAI.DEPARTMENTS d ON e.DEPT_ID      = d.DEPT_ID
+            JOIN      GERAI.EMPLOYEES        e   ON lr.EMPLOYEE_ID   = e.EMPLOYEE_ID
+            JOIN      GERAI.DEPARTMENTS      d   ON e.DEPT_ID        = d.DEPT_ID
+            LEFT JOIN GERAI.REF_TYPES_CONGE  rtc ON lr.LEAVE_TYPE_ID = rtc.TYPE_ID
             WHERE d.DEPT_ID = :deptId
             ORDER BY lr.CREATED_AT DESC
             """, nativeQuery = true)
     List<Object[]> listeCongesParDepartement(@Param("deptId") Long deptId);
+
+    /**
+     * Retourne les congés des membres directs d'un chef (MANAGER_ID + PROJECT_MEMBERS).
+     * Colonnes identiques à {@link #listeCongesForReport()}.
+     *
+     * @param chefEmployeeId l'identifiant Oracle du chef (EMPLOYEES.employee_id)
+     * @return la liste des congés des membres d'équipe triés par date de création décroissante
+     */
+    @Query(value = """
+            SELECT
+                lr.REQUEST_ID                                           AS REQUESTID,
+                NVL(e.EMPLOYEE_CODE, 'N/A')                             AS MATRICULE,
+                NVL(e.FIRST_NAME,'') || ' ' || NVL(e.LAST_NAME,'')     AS EMPLOYE_NOM,
+                NVL(d.NAME, 'Non défini')                               AS DEPARTEMENT,
+                TO_CHAR(lr.START_DATE,  'DD/MM/YYYY')                  AS DATE_DEBUT,
+                TO_CHAR(lr.END_DATE,    'DD/MM/YYYY')                  AS DATE_FIN,
+                NVL(lr.DAYS_COUNT, 0)                                   AS NB_JOURS,
+                lr.STATUS                                               AS STATUT,
+                NVL(rtc.LIBELLE, 'Congé annuel')                        AS TYPE_CONGE,
+                NVL(lr.REASON, '-')                                     AS MOTIF,
+                NVL(lr.REJECTION_REASON, '-')                           AS COMMENTAIRE_RH,
+                TO_CHAR(lr.CREATED_AT, 'DD/MM/YYYY HH24:MI')           AS DATE_CREATION
+            FROM GERAI.LEAVE_REQUESTS lr
+            JOIN      GERAI.EMPLOYEES        e   ON lr.EMPLOYEE_ID   = e.EMPLOYEE_ID
+            LEFT JOIN GERAI.DEPARTMENTS      d   ON e.DEPT_ID        = d.DEPT_ID
+            LEFT JOIN GERAI.REF_TYPES_CONGE  rtc ON lr.LEAVE_TYPE_ID = rtc.TYPE_ID
+            WHERE lr.EMPLOYEE_ID IN (
+                SELECT DISTINCT e2.EMPLOYEE_ID FROM GERAI.EMPLOYEES e2
+                WHERE e2.MANAGER_ID = :chefEmployeeId
+                UNION
+                SELECT DISTINCT pm.EMPLOYEE_ID FROM GERAI.PROJECT_MEMBERS pm
+                JOIN GERAI.PROJECTS p ON pm.PROJECT_ID = p.PROJECT_ID
+                WHERE p.CREATED_BY = :chefEmployeeId AND pm.IS_ACTIVE = 1
+            )
+            ORDER BY lr.CREATED_AT DESC
+            """, nativeQuery = true)
+    List<Object[]> listeCongesParManager(@Param("chefEmployeeId") Long chefEmployeeId);
 
     /* ═══════════════════════════════════════════════════════════
        RAPPORTS JASPER — FORMATIONS (globaux + filtrés par dept)
@@ -353,6 +530,13 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
                   ESTIMATED_COST, STATUT, DATE_CREATION
        ═══════════════════════════════════════════════════════════ */
 
+    /**
+     * Retourne la liste complète des demandes de formation pour le rapport global (tous départements).
+     * Colonnes : REQUEST_ID, EMPLOYE_NOM, MATRICULE, DEPARTEMENT, TRAINING_TITLE,
+     * PROVIDER, PLANNED_DATE, DURATION_DAYS, ESTIMATED_COST, STATUT, DATE_CREATION.
+     *
+     * @return la liste de toutes les formations triées par date de création décroissante
+     */
     @Query(value = """
             SELECT
                 tr.REQUEST_ID                                           AS REQUEST_ID,
@@ -373,6 +557,13 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
             """, nativeQuery = true)
     List<Object[]> listeFormationsForReport();
 
+    /**
+     * Retourne la liste des demandes de formation filtrées par département (pour les Chefs).
+     * Colonnes identiques à {@link #listeFormationsForReport()}.
+     *
+     * @param deptId l'identifiant Oracle du département (DEPARTMENTS.dept_id)
+     * @return la liste des formations du département triées par date de création décroissante
+     */
     @Query(value = """
             SELECT
                 tr.REQUEST_ID                                           AS REQUEST_ID,
@@ -398,6 +589,13 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
        FICHE EMPLOYÉ — Historique depuis V_ALL_DEMANDES
        ═══════════════════════════════════════════════════════════ */
 
+    /**
+     * Retourne l'historique des demandes RH d'un employé spécifique.
+     * Chaque ligne contient [TYPE_VAL, STATUT_VAL, DATE_CREATION, DESCRIPTION].
+     *
+     * @param employeeId l'identifiant Oracle de l'employé (EMPLOYEES.employee_id)
+     * @return la liste des demandes triées par date de création décroissante
+     */
     @Query(value = """
             SELECT
                 NVL(TYPE,'-')                               AS TYPE_VAL,
@@ -414,6 +612,12 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
        STATS PAR DÉPARTEMENT (dashboard global RH)
        ═══════════════════════════════════════════════════════════ */
 
+    /**
+     * Retourne les statistiques agrégées par département pour le tableau de bord RH global.
+     * Colonnes : DEPT_NAME, HEADCOUNT, NB_CONGES, NB_FORMATIONS, NB_PROJETS.
+     *
+     * @return la liste des statistiques par département, triées par nom de département
+     */
     @Query(value = """
             SELECT
                 dep.NAME                                                        AS DEPT_NAME,
@@ -436,6 +640,13 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
        TOP 5 — Employés les plus absents (année courante)
        ═══════════════════════════════════════════════════════════ */
 
+    /**
+     * Retourne le top 5 des employés les plus absents sur l'année courante (tous départements).
+     * Colonnes : NOM, DEPARTEMENT, TOTAL_JOURS.
+     * Seuls les congés validés par le RH (statut = VALIDE_RH) sont pris en compte.
+     *
+     * @return la liste des 5 employés les plus absents, triés par total de jours décroissant
+     */
     @Query(value = """
             SELECT *
             FROM (
@@ -454,6 +665,13 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
             WHERE ROWNUM <= 5
             """, nativeQuery = true)
     List<Object[]> top5EmployesAbsences();
+    /**
+     * Retourne les informations de base d'un employé pour l'en-tête de la fiche signalétique.
+     * Colonnes : FIRST_NAME, LAST_NAME, EMPLOYEE_CODE, DEPT_NAME, EMAIL, PHONE, HIRE_DATE.
+     *
+     * @param id l'identifiant Oracle de l'employé (EMPLOYEES.employee_id)
+     * @return une liste contenant au plus une ligne avec les informations de base de l'employé
+     */
     @Query(value = """
     SELECT e.FIRST_NAME, e.LAST_NAME, e.EMPLOYEE_CODE, d.NAME as DEPT_NAME, 
            e.EMAIL, e.PHONE, TO_CHAR(e.HIRE_DATE, 'DD/MM/YYYY') as HIRE_DATE
@@ -490,6 +708,14 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
        Colonnes : PROJET, CHEF_NOM, NB_MEMBRES, PROGRESSION, STATUT
        ═══════════════════════════════════════════════════════════ */
 
+    /**
+     * Retourne la liste complète des projets pour le rapport global (tous créateurs).
+     * Colonnes : PROJET, PRIORITE, DATE_DEBUT, DATE_FIN, NB_MEMBRES, TOTAL_TACHES,
+     * TACHES_COMPLETEES, PROGRESSION, STATUT.
+     * Les projets sont triés par priorité (CRITIQUE > HAUTE > NORMALE > FAIBLE) puis par nom.
+     *
+     * @return la liste de tous les projets avec leurs indicateurs d'avancement
+     */
     @Query(value = """
             SELECT
                 p.NAME                                                                  AS PROJET,
@@ -513,6 +739,13 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
             """, nativeQuery = true)
     List<Object[]> listeProjetsForReport();
 
+    /**
+     * Retourne la liste des projets créés par un employé spécifique (pour les Chefs).
+     * Colonnes identiques à {@link #listeProjetsForReport()}.
+     *
+     * @param employeeId l'identifiant Oracle de l'employé créateur du projet (PROJECTS.created_by)
+     * @return la liste des projets créés par cet employé, triés par priorité puis par nom
+     */
     @Query(value = """
             SELECT
                 p.NAME                                                                  AS PROJET,
@@ -537,6 +770,13 @@ public interface AnalyticsRepository extends JpaRepository<Demande, Long> {
             """, nativeQuery = true)
     List<Object[]> listeProjetsParCreateur(@Param("employeeId") Long employeeId);
 
+    /**
+     * Retourne l'identifiant Oracle d'un employé actif à partir de son adresse email.
+     * Utilisé comme fallback dans {@code resolveEmployeeId()} si le sub Keycloak échoue.
+     *
+     * @param email l'adresse email de l'employé (EMPLOYEES.email)
+     * @return l'identifiant Oracle de l'employé, ou {@code null} si introuvable
+     */
     @Query(value = """
             SELECT EMPLOYEE_ID
             FROM GERAI.EMPLOYEES

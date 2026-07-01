@@ -14,21 +14,58 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Service principal de gestion des projets, tâches et évaluations de performance.
+ * <p>
+ * Centralise la logique métier pour :
+ * <ul>
+ *   <li>Création, modification, suppression et consultation des projets.</li>
+ *   <li>Gestion des membres d'équipe (ajout, règle un-projet-par-MEMBRE).</li>
+ *   <li>Gestion du cycle de vie des tâches (création, assignation, avancement, bascule TERMINE).</li>
+ *   <li>Calcul du tableau de bord agrégé et des indicateurs de performance chef.</li>
+ *   <li>Création et consultation des évaluations de performance ({@link PerformanceEval}).</li>
+ *   <li>Résolution des données employés via {@link EmployeService} (REST + repli Oracle).</li>
+ *   <li>Publication de notifications Kafka via {@link ProjectNotificationService}.</li>
+ * </ul>
+ * </p>
+ * <p>
+ * {@code @Service} : composant Spring géré par le conteneur IoC.<br>
+ * {@code @Slf4j} : journalisation SLF4J via Lombok.<br>
+ * {@code @RequiredArgsConstructor} : injection des dépendances par constructeur (champs {@code final}).
+ * </p>
+ *
+ * @since 1.0
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ProjetService {
 
+    /** Repository JPA pour les projets (table {@code PROJECTS}). */
     private final ProjectRepository         projectRepo;
+    /** Repository JPA pour les membres d'équipe (table {@code PROJECT_MEMBERS}). */
     private final ProjectMemberRepository   memberRepo;
+    /** Repository JPA pour les tâches (table {@code PROJECT_TASKS}). */
     private final TaskRepository            taskRepo;
+    /** Repository JPA pour les commentaires de tâches (table {@code TASK_COMMENTS}). */
     private final TaskCommentRepository     commentRepo;
+    /** Repository JPA pour les évaluations de performance. */
     private final PerformanceEvalRepository evalRepo;
+    /** Helper JWT pour l'extraction de l'identifiant et des rôles de l'utilisateur courant. */
     private final JwtHelperInterface         jwt;
+    /** Service de résolution des informations des employés (REST + repli Oracle). */
     private final EmployeService            employeService;
+    /** Service de publication des notifications Kafka liées aux projets. */
     private final ProjectNotificationService notifService;
+    /** Template JDBC pour les requêtes SQL natives complexes (liste des employés, etc.). */
     private final JdbcTemplate              jdbc;
 
+    /**
+     * Retourne la liste des projets créés par le chef authentifié, triés par date de création décroissante.
+     *
+     * @param auth jeton d'authentification Spring Security du chef de projet
+     * @return liste de {@link ProjetDTO} appartenant au chef, éventuellement vide
+     */
     @Transactional(readOnly = true)
     public List<ProjetDTO> getProjetsChef(Authentication auth) {
         Long chefId = jwt.getEmployeeId(auth);
@@ -36,6 +73,17 @@ public class ProjetService {
                 .stream().map(this::toProjetDTO).collect(Collectors.toList());
     }
 
+    /**
+     * Crée un nouveau projet et y ajoute automatiquement le chef et les membres demandés.
+     * <p>
+     * Le créateur est inscrit avec le rôle {@code CHEF}. Chaque membre supplémentaire
+     * reçoit une notification Kafka via {@link ProjectNotificationService#notifierMembreAjoute}.
+     * </p>
+     *
+     * @param req  données de création du projet (nom, description, membres, dates, etc.)
+     * @param auth jeton d'authentification Spring Security du chef de projet
+     * @return le {@link ProjetDTO} du projet créé avec ses membres et tâches
+     */
     @Transactional
     public ProjetDTO createProjet(CreateProjetRequest req, Authentication auth) {
         Long chefId = jwt.getEmployeeId(auth);
@@ -60,6 +108,20 @@ public class ProjetService {
         return toProjetDTO(project);
     }
 
+    /**
+     * Met à jour un projet existant appartenant au chef authentifié.
+     * <p>
+     * Gère la synchronisation des membres (désactivation des anciens, ajout des nouveaux)
+     * et publie des notifications Kafka selon les changements de statut ou d'avancement.
+     * </p>
+     *
+     * @param projectId identifiant du projet à mettre à jour
+     * @param req       données de mise à jour (champs {@code null} ignorés)
+     * @param auth      jeton d'authentification Spring Security du chef de projet
+     * @return le {@link ProjetDTO} mis à jour
+     * @throws SecurityException      si le projet n'appartient pas au chef authentifié
+     * @throws NoSuchElementException si le projet est introuvable
+     */
     @Transactional
     public ProjetDTO updateProjet(Long projectId, UpdateProjetRequest req, Authentication auth) {
         Long chefId = jwt.getEmployeeId(auth);
@@ -96,12 +158,33 @@ public class ProjetService {
         return toProjetDTO(saved);
     }
 
+    /**
+     * Supprime un projet appartenant au chef authentifié (suppression en cascade des membres et tâches).
+     *
+     * @param projectId identifiant du projet à supprimer
+     * @param auth      jeton d'authentification Spring Security du chef de projet
+     * @throws SecurityException      si le projet n'appartient pas au chef authentifié
+     * @throws NoSuchElementException si le projet est introuvable
+     */
     @Transactional
     public void deleteProjet(Long projectId, Authentication auth) {
         Long chefId = jwt.getEmployeeId(auth);
         projectRepo.delete(findProjetOwnedByChef(projectId, chefId));
     }
 
+    /**
+     * Crée une nouvelle tâche dans un projet appartenant au chef authentifié.
+     * <p>
+     * Si un employé est assigné, une notification Kafka lui est envoyée via
+     * {@link ProjectNotificationService#notifierTacheAssignee}.
+     * </p>
+     *
+     * @param req  données de création de la tâche (titre, description, assigné, échéance, etc.)
+     * @param auth jeton d'authentification Spring Security du chef de projet
+     * @return le {@link TacheDTO} de la tâche créée
+     * @throws SecurityException      si le projet cible n'appartient pas au chef authentifié
+     * @throws NoSuchElementException si le projet ou la tâche parente est introuvable
+     */
     @Transactional
     public TacheDTO createTache(CreateTacheRequest req, Authentication auth) {
         Long chefId = jwt.getEmployeeId(auth);
@@ -116,6 +199,20 @@ public class ProjetService {
         return toTacheDTO(saved);
     }
 
+    /**
+     * Met à jour une tâche existante dans un projet appartenant au chef authentifié.
+     * <p>
+     * Si l'assigné change, une notification Kafka est publiée pour le nouvel assigné.
+     * Les champs {@code null} dans {@code req} sont ignorés (mise à jour partielle).
+     * </p>
+     *
+     * @param taskId identifiant de la tâche à mettre à jour
+     * @param req    données de mise à jour (champs {@code null} ignorés)
+     * @param auth   jeton d'authentification Spring Security du chef de projet
+     * @return le {@link TacheDTO} mis à jour
+     * @throws SecurityException      si le projet parent n'appartient pas au chef authentifié
+     * @throws NoSuchElementException si la tâche est introuvable
+     */
     @Transactional
     public TacheDTO updateTache(Long taskId, CreateTacheRequest req, Authentication auth) {
         Long chefId = jwt.getEmployeeId(auth);
@@ -133,6 +230,19 @@ public class ProjetService {
         return toTacheDTO(saved);
     }
 
+    /**
+     * Assigne une tâche à un employé spécifique (opération dédiée, sans modifier les autres champs).
+     * <p>
+     * Si l'employé assigné change par rapport à l'ancien assigné, une notification Kafka est publiée.
+     * </p>
+     *
+     * @param taskId     identifiant de la tâche à assigner
+     * @param employeeId identifiant Oracle de l'employé à qui assigner la tâche
+     * @param auth       jeton d'authentification Spring Security du chef de projet
+     * @return le {@link TacheDTO} mis à jour avec le nouvel assigné
+     * @throws SecurityException      si le projet parent n'appartient pas au chef authentifié
+     * @throws NoSuchElementException si la tâche est introuvable
+     */
     @Transactional
     public TacheDTO assignTache(Long taskId, Long employeeId, Authentication auth) {
         Long chefId = jwt.getEmployeeId(auth);
@@ -145,12 +255,31 @@ public class ProjetService {
         return toTacheDTO(saved);
     }
 
+    /**
+     * Retourne la liste des projets dont l'employé authentifié est membre actif.
+     *
+     * @param auth jeton d'authentification Spring Security de l'employé
+     * @return liste de {@link ProjetDTO} des projets de l'employé, éventuellement vide
+     */
     @Transactional(readOnly = true)
     public List<ProjetDTO> getMesProjets(Authentication auth) {
         return projectRepo.findByMemberEmployeeId(jwt.getEmployeeId(auth))
                 .stream().map(this::toProjetDTO).collect(Collectors.toList());
     }
 
+    /**
+     * Retourne les détails complets d'un projet si l'utilisateur y a accès.
+     * <p>
+     * L'accès est accordé aux administrateurs/RH, au chef créateur du projet,
+     * et aux membres actifs du projet.
+     * </p>
+     *
+     * @param projectId identifiant du projet à consulter
+     * @param auth      jeton d'authentification Spring Security de l'utilisateur
+     * @return le {@link ProjetDTO} du projet avec ses membres et tâches
+     * @throws SecurityException      si l'utilisateur n'est pas membre ou admin/RH
+     * @throws NoSuchElementException si le projet est introuvable
+     */
     @Transactional(readOnly = true)
     public ProjetDTO getProjetById(Long projectId, Authentication auth) {
         Long empId = jwt.getEmployeeId(auth);
@@ -161,11 +290,30 @@ public class ProjetService {
         return toProjetDTO(project);
     }
 
+    /**
+     * Retourne toutes les tâches assignées à l'employé authentifié.
+     *
+     * @param auth jeton d'authentification Spring Security de l'employé
+     * @return liste de {@link TacheDTO} assignées à l'employé, éventuellement vide
+     */
     @Transactional(readOnly = true)
     public List<TacheDTO> getMesTaches(Authentication auth) {
         return taskRepo.findMesTaches(jwt.getEmployeeId(auth)).stream().map(this::toTacheDTO).collect(Collectors.toList());
     }
 
+    /**
+     * Bascule le statut d'une tâche entre {@code TERMINE} et {@code EN_COURS} pour l'assigné authentifié.
+     * <p>
+     * Met également à jour la progression du projet parent. Si la tâche passe à {@code TERMINE},
+     * une notification Kafka est publiée au chef de projet.
+     * </p>
+     *
+     * @param taskId identifiant de la tâche à basculer
+     * @param auth   jeton d'authentification Spring Security de l'assigné
+     * @return le {@link TacheDTO} avec le nouveau statut et la progression mise à jour
+     * @throws SecurityException      si l'utilisateur n'est pas l'assigné de la tâche
+     * @throws NoSuchElementException si la tâche est introuvable
+     */
     @Transactional
     public TacheDTO toggleTache(Long taskId, Authentication auth) {
         Long empId = jwt.getEmployeeId(auth);
@@ -182,6 +330,25 @@ public class ProjetService {
         return toTacheDTO(saved);
     }
 
+    /**
+     * Met à jour le pourcentage d'avancement d'une tâche et ajuste son statut automatiquement.
+     * <p>
+     * Règles d'ajustement du statut :
+     * <ul>
+     *   <li>{@code progressPct >= 100} → statut {@code TERMINE}</li>
+     *   <li>{@code progressPct > 0} et statut actuel {@code A_FAIRE} → statut {@code EN_COURS}</li>
+     * </ul>
+     * La progression du projet parent est recalculée. Une notification Kafka est publiée
+     * au chef si la tâche passe à {@code TERMINE}.
+     * </p>
+     *
+     * @param taskId      identifiant de la tâche à mettre à jour
+     * @param progressPct pourcentage d'avancement (borné entre 0 et 100)
+     * @param auth        jeton d'authentification Spring Security de l'assigné
+     * @return le {@link TacheDTO} mis à jour
+     * @throws SecurityException      si l'utilisateur n'est pas l'assigné de la tâche
+     * @throws NoSuchElementException si la tâche est introuvable
+     */
     @Transactional
     public TacheDTO updateAvancement(Long taskId, Integer progressPct, Authentication auth) {
         Long empId = jwt.getEmployeeId(auth);
@@ -197,6 +364,13 @@ public class ProjetService {
         return toTacheDTO(saved);
     }
 
+    /**
+     * Supprime une tâche par son identifiant.
+     *
+     * @param taskId identifiant de la tâche à supprimer
+     * @param auth   jeton d'authentification Spring Security (non utilisé pour la vérification actuelle)
+     * @throws IllegalArgumentException si la tâche est introuvable
+     */
     @Transactional
     public void deleteTache(Long taskId, Authentication auth) {
         if (!taskRepo.existsById(taskId)) {
@@ -206,6 +380,12 @@ public class ProjetService {
         log.info("[Tache] Supprimée id={}", taskId);
     }
 
+    /**
+     * Retourne toutes les tâches des projets créés par le chef authentifié, triées par date de création.
+     *
+     * @param auth jeton d'authentification Spring Security du chef de projet
+     * @return liste plate de {@link TacheDTO} de tous les projets du chef
+     */
     @Transactional(readOnly = true)
     public List<TacheDTO> getTachesChef(Authentication auth) {
         Long chefId = jwt.getEmployeeId(auth);
@@ -215,11 +395,25 @@ public class ProjetService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Retourne tous les projets de la base de données (accès administrateur/RH).
+     *
+     * @return liste complète de {@link ProjetDTO}
+     */
     @Transactional(readOnly = true)
     public List<ProjetDTO> getAllProjets() {
         return projectRepo.findAll().stream().map(this::toProjetDTO).collect(Collectors.toList());
     }
 
+    /**
+     * Calcule et retourne les indicateurs agrégés du tableau de bord des projets.
+     * <p>
+     * Agrège : nombre total de projets, répartition par statut, total de tâches,
+     * tâches terminées et taux de complétion global (arrondi à 2 décimales).
+     * </p>
+     *
+     * @return le {@link DashboardDTO} avec tous les indicateurs agrégés
+     */
     @Transactional(readOnly = true)
     public DashboardDTO getDashboard() {
         long total = projectRepo.countAll(), taches = taskRepo.countAll(), tachesOk = taskRepo.countAllTerminees();
@@ -230,6 +424,17 @@ public class ProjetService {
                 .tauxCompletion(taches > 0 ? round2((tachesOk * 100.0) / taches) : 0).build();
     }
 
+    /**
+     * Crée une nouvelle évaluation de performance pour un employé, soumise par le chef authentifié.
+     * <p>
+     * L'évaluation est créée avec le statut {@code SOUMIS}. L'identifiant de l'évaluateur
+     * est résolu automatiquement depuis le jeton JWT.
+     * </p>
+     *
+     * @param req  données de l'évaluation (employeeId, année, trimestre, score, forces, axes d'amélioration)
+     * @param auth jeton d'authentification Spring Security de l'évaluateur (chef)
+     * @return le {@link PerformanceEvalDTO} de l'évaluation créée avec son identifiant généré
+     */
     @Transactional
     public PerformanceEvalDTO createEval(PerformanceEvalDTO req, Authentication auth) {
         PerformanceEval eval = PerformanceEval.builder().employeeId(req.getEmployeeId()).evaluatorId(jwt.getEmployeeId(auth))
@@ -238,9 +443,26 @@ public class ProjetService {
         return toEvalDTO(evalRepo.save(eval));
     }
 
+    /**
+     * Retourne toutes les évaluations de performance (accès administrateur/RH).
+     *
+     * @return liste complète de {@link PerformanceEvalDTO}
+     */
     @Transactional(readOnly = true)
     public List<PerformanceEvalDTO> getEvals() { return evalRepo.findAll().stream().map(this::toEvalDTO).collect(Collectors.toList()); }
 
+    /**
+     * Retourne la liste des employés actifs disponibles pour être ajoutés à un projet.
+     * <p>
+     * Exclut l'utilisateur authentifié lui-même et les employés de niveau
+     * {@code EXECUTIVE} ou {@code MANAGER}. Enrichit chaque employé avec
+     * le nom de son projet actuel (s'il en a un).
+     * En cas d'erreur DB, retourne une liste vide sans lever d'exception.
+     * </p>
+     *
+     * @param auth jeton d'authentification Spring Security de l'utilisateur appelant
+     * @return liste de {@link EmployeDTO} des employés actifs éligibles
+     */
     public List<EmployeDTO> getEmployes(Authentication auth) {
         Long excludeId;
         try {
@@ -295,34 +517,29 @@ public class ProjetService {
 
     private Map<Long, EmployeDTO> fetchEmployeMap(List<Long> ids) {
         if (ids == null || ids.isEmpty()) return Map.of();
-        String inClause = ids.stream().map(id -> "?").collect(Collectors.joining(","));
-        String sql = "SELECT e.EMPLOYEE_ID, e.FIRST_NAME, e.LAST_NAME, e.EMAIL, e.PHONE, " +
-                     "       e.PHOTO_URL, e.STATUS, TO_CHAR(e.HIRE_DATE, 'YYYY-MM-DD') AS HIRE_DATE_STR, " +
-                     "       d.NOM AS DEPT_NOM " +
-                     "FROM GERAI.EMPLOYEES e " +
-                     "LEFT JOIN GERAI.ADMIN_DEPARTEMENTS d ON e.DEPT_ID = d.DEPT_ADMIN_ID " +
-                     "WHERE e.EMPLOYEE_ID IN (" + inClause + ")";
-        try {
-            return jdbc.query(sql, ids.toArray(), (rs, i) -> EmployeDTO.builder()
-                .id(rs.getLong("EMPLOYEE_ID"))
-                .prenom(rs.getString("FIRST_NAME"))
-                .nom(rs.getString("LAST_NAME"))
-                .nomComplet(rs.getString("FIRST_NAME") + " " + rs.getString("LAST_NAME"))
-                .email(rs.getString("EMAIL"))
-                .telephone(rs.getString("PHONE"))
-                .photo(rs.getString("PHOTO_URL"))
-                .statut(rs.getString("STATUS"))
-                .dateEmbauche(rs.getString("HIRE_DATE_STR"))
-                .departement(rs.getString("DEPT_NOM"))
-                .poste("")
-                .build()
-            ).stream().collect(Collectors.toMap(EmployeDTO::getId, e -> e));
-        } catch (Exception e) {
-            log.warn("[ProjetService] fetchEmployeMap failed: {}", e.getMessage());
-            return Map.of();
+        Map<Long, EmployeDTO> result = new HashMap<>();
+        for (Long id : ids) {
+            result.put(id, employeService.getEmployeById(id));
         }
+        return result;
     }
 
+    /**
+     * Calcule les indicateurs de performance du chef de projet authentifié.
+     * <p>
+     * Indicateurs calculés :
+     * <ul>
+     *   <li>Taux de livraison projet (% de projets TERMINE sur total).</li>
+     *   <li>Satisfaction client (dérivée du taux de livraison, bornée à 5).</li>
+     *   <li>Collaboration d'équipe (% de tâches TERMINE sur total des tâches des projets du chef).</li>
+     *   <li>Qualité code (moyenne des scores d'évaluation reçus, bornée à 100).</li>
+     *   <li>Temps de résolution de bugs (valeur fixe illustrative : 2,5 jours).</li>
+     * </ul>
+     * </p>
+     *
+     * @param auth jeton d'authentification Spring Security du chef de projet
+     * @return le {@link PerformanceChefDTO} avec les indicateurs calculés
+     */
     @Transactional(readOnly = true)
     public PerformanceChefDTO getPerformanceChef(Authentication auth) {
         Long chefId = jwt.getEmployeeId(auth);
@@ -348,7 +565,16 @@ public class ProjetService {
                 .build();
     }
 
-    /** Consommé par taches-service via Feign (GET /api/projets/by-name) */
+    /**
+     * Recherche un projet par son nom (insensible à la casse).
+     * <p>
+     * Point de consommation Feign depuis {@code taches-service} via {@code GET /api/projets/by-name}.
+     * </p>
+     *
+     * @param nom  nom du projet à rechercher
+     * @param auth jeton d'authentification Spring Security (transmis par Feign)
+     * @return un {@link Optional} contenant le {@link ProjetDTO} si trouvé, vide sinon
+     */
     @Transactional(readOnly = true)
     public Optional<ProjetDTO> findByName(String nom, Authentication auth) {
         return projectRepo.findByNameIgnoreCase(nom).map(this::toProjetDTO);
@@ -360,6 +586,19 @@ public class ProjetService {
         return p;
     }
 
+    /**
+     * Ajoute un membre actif à un projet avec le rôle spécifié.
+     * <p>
+     * Applique la règle métier : un employé avec le rôle {@code MEMBRE} ne peut être
+     * affecté qu'à un seul projet actif à la fois. Les employés avec le rôle {@code CHEF}
+     * peuvent gérer plusieurs projets simultanément.
+     * </p>
+     *
+     * @param project    le projet auquel ajouter le membre
+     * @param employeeId identifiant Oracle de l'employé à ajouter
+     * @param role       rôle de l'employé dans le projet ({@code CHEF} ou {@code MEMBRE})
+     * @throws IllegalArgumentException si l'employé est déjà actif sur un autre projet en tant que MEMBRE
+     */
     @Transactional
     public void addMembre(Project project, Long employeeId, String role) {
         // One-active-project-per-MEMBRE rule — CHEF can manage multiple projects
@@ -388,7 +627,7 @@ public class ProjetService {
         Map<Long, EmployeDTO> empMap = fetchEmployeMap(ids);
         List<MembreDTO> membres = rawMembres.stream().map(m -> {
             EmployeDTO emp = empMap.getOrDefault(m.getEmployeeId(),
-                EmployeDTO.builder().id(m.getEmployeeId()).prenom("Emp").nom("#" + m.getEmployeeId())
+                EmployeDTO.builder().id(m.getEmployeeId())
                     .nomComplet("Employé #" + m.getEmployeeId()).build());
             return MembreDTO.builder()
                 .id(m.getEmployeeId()).prenom(emp.getPrenom()).nom(emp.getNom())
@@ -402,9 +641,14 @@ public class ProjetService {
         }).collect(Collectors.toList());
         String chefNom = membres.stream().filter(m -> "CHEF".equals(m.getRole())).map(MembreDTO::getNomComplet).findFirst().orElse("—");
         List<TacheDTO> taches = taskRepo.findByProject_ProjectIdOrderByCreatedAtAsc(p.getProjectId()).stream().map(this::toTacheDTO).collect(Collectors.toList());
+        int total = taches.size();
+        int terminees = (int) taches.stream().filter(TacheDTO::isTerminee).count();
+        int progression = total > 0 ? (terminees * 100) / total : (p.getProgressPct() != null ? p.getProgressPct() : 0);
         return ProjetDTO.builder().id(p.getProjectId()).nom(p.getName()).description(p.getDescription()).code(p.getCode())
                 .createdBy(p.getCreatedBy()).chefProjet(chefNom).deptId(p.getDeptId()).startDate(p.getStartDate()).endDate(p.getEndDate())
-                .statut(p.getStatus()).priority(p.getPriority()).progression(p.getProgressPct()).membres(membres).taches(taches)
+                .statut(p.getStatus()).priority(p.getPriority()).progression(progression)
+                .totalTaches(total).tachesCompletees(terminees)
+                .membres(membres).taches(taches)
                 .createdAt(p.getCreatedAt()).updatedAt(p.getUpdatedAt()).build();
     }
 
@@ -424,10 +668,18 @@ public class ProjetService {
     }
 
     private String buildInitiales(EmployeDTO emp) {
-        if (emp == null) return "??";
+        if (emp == null) return "?";
         String p = (emp.getPrenom() != null && !emp.getPrenom().isEmpty()) ? String.valueOf(emp.getPrenom().charAt(0)).toUpperCase() : "";
-        String n = (emp.getNom() != null && !emp.getNom().isEmpty()) ? String.valueOf(emp.getNom().charAt(0)).toUpperCase() : "";
-        return p + n;
+        String n = (emp.getNom()    != null && !emp.getNom().isEmpty())    ? String.valueOf(emp.getNom().charAt(0)).toUpperCase()    : "";
+        if (!p.isEmpty() || !n.isEmpty()) return p + n;
+        // Fall back to first two initials from nomComplet
+        if (emp.getNomComplet() != null && !emp.getNomComplet().isBlank()) {
+            String[] parts = emp.getNomComplet().trim().split("\\s+");
+            String i1 = parts.length > 0 && !parts[0].isEmpty() ? String.valueOf(parts[0].charAt(0)).toUpperCase() : "";
+            String i2 = parts.length > 1 && !parts[1].isEmpty() ? String.valueOf(parts[1].charAt(0)).toUpperCase() : "";
+            if (!i1.isEmpty()) return i1 + i2;
+        }
+        return "?";
     }
 
     private double round2(double v) { return Math.round(v * 100.0) / 100.0; }

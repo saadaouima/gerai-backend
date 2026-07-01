@@ -6,10 +6,17 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 /**
- * Entité mappée sur GERAI.DOCUMENT_REQUESTS (11 colonnes).
- *
+ * Entité JPA représentant une demande de document administratif
+ * (attestation de travail, bulletin de salaire, certificat de congé, etc.).
+ * Mappée sur la table Oracle {@code GERAI.DOCUMENT_REQUESTS}.
+ * <p>
+ * Workflow : EN_ATTENTE → EN_COURS → PRET → LIVRE | REFUSE.
+ * Le type de document est référencé par {@code docTypeId} (table {@code DOCUMENT_TYPES}).
+ * <p>
  * Statuts valides (CHECK Oracle) :
  *   EN_ATTENTE | EN_COURS | PRET | LIVRE | REFUSE
+ *
+ * @since 1.0
  */
 @Entity
 @Table(name = "DOCUMENT_REQUESTS")
@@ -57,12 +64,18 @@ public class DocumentRequest {
     @Column(name = "DOCUMENT_URL", length = 500)
     private String documentUrl;
 
+    /** Horodatage de traitement de la demande par le service RH. */
     @Column(name = "PROCESSED_AT")
     private LocalDateTime processedAt;
 
+    /** Horodatage de création de la demande — positionné par {@code @PrePersist}. */
     @Column(name = "CREATED_AT", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    /**
+     * Initialise {@code createdAt} à l'heure courante et le statut à {@code EN_ATTENTE} si null,
+     * avant l'insertion JPA.
+     */
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();

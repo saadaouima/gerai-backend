@@ -6,6 +6,16 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
+/**
+ * Service d'envoi d'emails transactionnels pour le microservice {@code employe-service}.
+ * Actuellement utilisé pour envoyer le mot de passe temporaire lors de la création d'un compte.
+ *
+ * <p>@Service : enregistré comme bean Spring et injecté dans {@link EmployeeService}.</p>
+ * <p>Les erreurs d'envoi sont journalisées mais ne font pas échouer la requête principale —
+ * l'employé est déjà créé en base et dans Keycloak.</p>
+ *
+ * @since 1.0
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -13,6 +23,15 @@ public class EmailService {
 
     private final JavaMailSender mailSender;
 
+    /**
+     * Envoie un email de bienvenue contenant le mot de passe temporaire
+     * à l'adresse email professionnelle du nouvel employé.
+     *
+     * @param toEmail           l'adresse email du destinataire (employé)
+     * @param firstName         le prénom de l'employé (utilisé dans le corps de l'email)
+     * @param username          le login Keycloak de l'employé (format {@code prenom.nom})
+     * @param temporaryPassword le mot de passe temporaire à communiquer (en clair, jamais stocké)
+     */
     public void sendTemporaryPassword(String toEmail,
                                       String firstName,
                                       String username,
@@ -32,6 +51,14 @@ public class EmailService {
         }
     }
 
+    /**
+     * Construit le corps de l'email de bienvenue avec les informations de connexion.
+     *
+     * @param firstName         le prénom de l'employé
+     * @param username          le login Keycloak de l'employé
+     * @param temporaryPassword le mot de passe temporaire en clair
+     * @return le corps de l'email au format texte brut
+     */
     private String buildEmailBody(String firstName,
                                   String username,
                                   String temporaryPassword) {

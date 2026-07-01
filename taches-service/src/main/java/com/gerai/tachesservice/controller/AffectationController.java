@@ -14,21 +14,27 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
- * Endpoints espace Chef :
- *   GET    /api/affectation/projets           → liste des projets du chef
- *   GET    /api/affectation/taches            → toutes les tâches du chef
- *   GET    /api/affectation/taches?projet=X   → tâches d'un projet
- *   POST   /api/affectation/taches            → créer une tâche
- *   PUT    /api/affectation/taches/{id}       → modifier une tâche
- *   DELETE /api/affectation/taches/{id}       → supprimer une tâche
+ * Contrôleur REST dédié à l'espace Chef de projet pour la gestion des tâches et projets.
+ * <p>
+ * {@code @RestController} : combine {@code @Controller} et {@code @ResponseBody},
+ * toutes les méthodes retournent directement du JSON sérialisé.
+ * {@code @RequestMapping("/api/affectation")} : préfixe commun à tous les endpoints de ce contrôleur.
+ * {@code @RequiredArgsConstructor} : génère un constructeur injectant {@code TacheService} par Lombok.
+ * {@code @CrossOrigin} : autorise les requêtes CORS depuis l'application Angular ({@code localhost:4200}).
+ * <p>
+ * Endpoints exposés :
+ * <ul>
+ *   <li>{@code GET /api/affectation/projets} → liste des projets du chef connecté</li>
+ *   <li>{@code GET /api/affectation/taches} → toutes les tâches du chef</li>
+ *   <li>{@code GET /api/affectation/taches?projet=X} → tâches filtrées par projet</li>
+ *   <li>{@code POST /api/affectation/taches} → créer une tâche</li>
+ *   <li>{@code PUT /api/affectation/taches/{id}} → modifier une tâche existante</li>
+ *   <li>{@code DELETE /api/affectation/taches/{id}} → supprimer une tâche</li>
+ * </ul>
+ * <p>
+ * Correspond aux appels Angular du composant {@code AffectationTachesComponent} via {@code TacheService}.
  *
- * Correspond exactement aux appels du TacheService Angular (AffectationTachesComponent) :
- *   getProjets()         → GET /api/affectation/projets
- *   getTaches()          → GET /api/affectation/taches
- *   getTachesByProjet(n) → GET /api/affectation/taches?projet={nom}
- *   createTache(t)       → POST /api/affectation/taches
- *   updateTache(id, t)   → PUT /api/affectation/taches/{id}
- *   deleteTache(id)      → DELETE /api/affectation/taches/{id}
+ * @since 1.0
  */
 @Slf4j
 @RestController
@@ -37,14 +43,21 @@ import java.util.List;
 @CrossOrigin(origins = "${app.cors.allowed-origin:http://localhost:4200}")
 public class AffectationController {
 
+    /** Service métier de gestion des tâches, injecté par le constructeur Lombok. */
     private final TacheService tacheService;
 
     /* ── Projets ──────────────────────────────────────── */
 
     /**
-     * GET /api/affectation/projets
-     * Angular : TacheService.getProjets()
-     * Retourne les projets du chef connecté (ou tous les projets pour RH/Admin).
+     * Récupère la liste des projets accessibles à l'utilisateur connecté.
+     * <p>
+     * Si l'utilisateur possède le rôle RH ou ADMIN, tous les projets de la plateforme
+     * sont retournés. Pour un Chef, seuls les projets dont il est responsable sont retournés.
+     * <p>
+     * Appelé par Angular : {@code TacheService.getProjets()}.
+     *
+     * @param auth le contexte d'authentification Spring Security de l'utilisateur connecté
+     * @return {@code 200 OK} avec la liste des {@link ProjetDTO} accessibles
      */
     @GetMapping("/projets")
     @PreAuthorize("hasAnyRole('CHEF','RH','ADMIN','ADMIN_RH')")
@@ -65,9 +78,16 @@ public class AffectationController {
     /* ── Tâches ───────────────────────────────────────── */
 
     /**
-     * GET /api/affectation/taches
-     * GET /api/affectation/taches?projet={nom}
-     * Angular : TacheService.getTaches() et getTachesByProjet(projetNom)
+     * Récupère les tâches du chef connecté, avec filtre optionnel par nom de projet.
+     * <p>
+     * Sans paramètre {@code projet}, retourne toutes les tâches de tous les projets du chef.
+     * Avec le paramètre {@code projet}, filtre les tâches appartenant au projet nommé.
+     * <p>
+     * Appelé par Angular : {@code TacheService.getTaches()} et {@code getTachesByProjet(projetNom)}.
+     *
+     * @param projet nom du projet servant de filtre (paramètre optionnel)
+     * @param auth   le contexte d'authentification de l'utilisateur connecté
+     * @return {@code 200 OK} avec la liste des {@link TacheDTO} correspondantes
      */
     @GetMapping("/taches")
     @PreAuthorize("hasAnyRole('CHEF','RH','ADMIN','ADMIN_RH')")
@@ -80,11 +100,17 @@ public class AffectationController {
     }
 
     /**
-     * POST /api/affectation/taches
-     * Angular : TacheService.createTache(tache)
+     * Crée une nouvelle tâche et l'assigne à un employé dans un projet.
+     * <p>
+     * Corps attendu depuis {@code AffectationTachesComponent.saveTask()} :
+     * {@code { titre, priorite, assigneA, echeance, projet }}.
+     * Une notification Kafka est envoyée à l'employé assigné après la création.
+     * <p>
+     * Appelé par Angular : {@code TacheService.createTache(tache)}.
      *
-     * Body attendu depuis AffectationTachesComponent.saveTask() :
-     * { titre, priorite, assigneA, echeance, projet }
+     * @param request le DTO de création de tâche validé par {@code @Valid}
+     * @param auth    le contexte d'authentification (identifie le créateur de la tâche)
+     * @return {@code 201 Created} avec le {@link TacheDTO} de la tâche créée
      */
     @PostMapping("/taches")
     @PreAuthorize("hasAnyRole('CHEF','RH','ADMIN','ADMIN_RH')")
@@ -98,8 +124,16 @@ public class AffectationController {
     }
 
     /**
-     * PUT /api/affectation/taches/{id}
-     * Angular : TacheService.updateTache(id, tache)
+     * Met à jour une tâche existante (titre, priorité, assignation, échéance, etc.).
+     * <p>
+     * Si l'assigné change, une notification de réassignation est envoyée via Kafka.
+     * <p>
+     * Appelé par Angular : {@code TacheService.updateTache(id, tache)}.
+     *
+     * @param id      identifiant Oracle de la tâche à modifier (TASKS.task_id)
+     * @param request le DTO contenant les nouvelles valeurs (champs null ignorés)
+     * @param auth    le contexte d'authentification de l'utilisateur
+     * @return {@code 200 OK} avec le {@link TacheDTO} mis à jour
      */
     @PutMapping("/taches/{id}")
     @PreAuthorize("hasAnyRole('CHEF','RH','ADMIN','ADMIN_RH')")
@@ -112,9 +146,16 @@ public class AffectationController {
     }
 
     /**
-     * DELETE /api/affectation/taches/{id}
-     * Angular : TacheService.deleteTache(id)
-     * Retourne 204 No Content — correspond au mock MSW.
+     * Supprime définitivement une tâche.
+     * <p>
+     * Seul le Chef créateur du projet ou un Admin/RH peut supprimer une tâche.
+     * Retourne {@code 204 No Content} en cas de succès.
+     * <p>
+     * Appelé par Angular : {@code TacheService.deleteTache(id)}.
+     *
+     * @param id   identifiant Oracle de la tâche à supprimer (TASKS.task_id)
+     * @param auth le contexte d'authentification (vérifié pour les droits de suppression)
+     * @return {@code 204 No Content}
      */
     @DeleteMapping("/taches/{id}")
     @PreAuthorize("hasAnyRole('CHEF','RH','ADMIN','ADMIN_RH')")

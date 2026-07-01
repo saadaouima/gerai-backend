@@ -15,11 +15,40 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Configuration de la sécurité HTTP du microservice notification-service.
+ * <p>
+ * {@code @Configuration} : déclare cette classe comme source de beans Spring.<br>
+ * {@code @EnableWebSecurity} : active la chaîne de filtres de sécurité Spring Security.<br>
+ * {@code @EnableMethodSecurity} : autorise l'usage de {@code @PreAuthorize} /
+ * {@code @PostAuthorize} sur les méthodes des contrôleurs.
+ * </p>
+ * <p>
+ * Règles d'accès configurées :
+ * <ul>
+ *   <li>Endpoints WebSocket ({@code /ws/**}, {@code /ws-notifications/**}) : accès libre
+ *       (l'authentification est réalisée au niveau STOMP dans {@code WebSocketConfig}).</li>
+ *   <li>Endpoints internes ({@code /internal/**}) : accès libre (appelés inter-services).</li>
+ *   <li>API REST ({@code /api/notifications/**}) : authentification JWT obligatoire.</li>
+ * </ul>
+ * CSRF désactivé car l'API est stateless (JWT).
+ * </p>
+ *
+ * @since 1.0
+ */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
 
+    /**
+     * Définit la chaîne de filtres de sécurité principale : configuration CORS,
+     * désactivation du CSRF, règles d'autorisation et validation des JWT Keycloak.
+     *
+     * @param http le constructeur de configuration de sécurité HTTP fourni par Spring Security
+     * @return la {@link SecurityFilterChain} construite et enregistrée dans le contexte Spring
+     * @throws Exception si la construction de la chaîne de filtres échoue
+     */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 
@@ -49,7 +78,11 @@ public class SecurityConfig {
     }
 
     /**
-     * 🔐 Convertisseur des rôles Keycloak (realm_access.roles)
+     * Convertisseur des rôles Keycloak extraits du claim {@code realm_access.roles}
+     * du JWT vers des {@link org.springframework.security.core.GrantedAuthority}
+     * Spring Security (préfixe {@code ROLE_}).
+     *
+     * @return le {@link JwtAuthenticationConverter} configuré pour lire les rôles Keycloak
      */
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
@@ -79,7 +112,14 @@ public class SecurityConfig {
     }
 
     /**
-     * 🌍 Configuration CORS (Angular 4200)
+     * Configure les règles CORS autorisant le frontend Angular ({@code localhost:4200})
+     * à accéder à l'API REST du service.
+     * <p>
+     * Méthodes HTTP autorisées : GET, POST, PUT, PATCH, DELETE, OPTIONS.<br>
+     * Les en-têtes arbitraires et les credentials (cookies, Authorization) sont acceptés.
+     * </p>
+     *
+     * @return la source de configuration CORS enregistrée pour toutes les routes ({@code /**})
      */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {

@@ -25,13 +25,27 @@ import java.time.format.DateTimeFormatter;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class StatResponseDTO<T> {
 
+    /** Indique si la requête s'est terminée avec succès. */
     private boolean success;
+
+    /** Le payload métier sérialisé (DashboardSummaryDTO, CongeStatsDTO, etc.). */
     private T data;
+
+    /** Message d'information ou d'erreur lisible par l'utilisateur. */
     private String message;
+
+    /** Horodatage de génération de la réponse au format "dd/MM/yyyy HH:mm:ss". */
     private String generatedAt;
 
     /* ── Factories ────────────────────────────────────── */
 
+    /**
+     * Crée une réponse de succès avec un payload de données.
+     *
+     * @param <T>  le type du payload
+     * @param data le payload à encapsuler
+     * @return un {@link StatResponseDTO} avec {@code success = true}
+     */
     public static <T> StatResponseDTO<T> ok(T data) {
         return StatResponseDTO.<T>builder()
                 .success(true)
@@ -40,6 +54,14 @@ public class StatResponseDTO<T> {
                 .build();
     }
 
+    /**
+     * Crée une réponse de succès avec un payload et un message d'information.
+     *
+     * @param <T>     le type du payload
+     * @param data    le payload à encapsuler
+     * @param message le message d'information à joindre à la réponse
+     * @return un {@link StatResponseDTO} avec {@code success = true} et le message
+     */
     public static <T> StatResponseDTO<T> ok(T data, String message) {
         return StatResponseDTO.<T>builder()
                 .success(true)
@@ -49,6 +71,13 @@ public class StatResponseDTO<T> {
                 .build();
     }
 
+    /**
+     * Crée une réponse d'erreur sans payload.
+     *
+     * @param <T>     le type générique (non utilisé dans ce cas)
+     * @param message le message d'erreur lisible par l'utilisateur ou le frontend
+     * @return un {@link StatResponseDTO} avec {@code success = false}
+     */
     public static <T> StatResponseDTO<T> error(String message) {
         return StatResponseDTO.<T>builder()
                 .success(false)
@@ -57,6 +86,11 @@ public class StatResponseDTO<T> {
                 .build();
     }
 
+    /**
+     * Retourne l'horodatage courant formaté pour le champ {@code generatedAt}.
+     *
+     * @return la date et l'heure actuelles au format "dd/MM/yyyy HH:mm:ss"
+     */
     private static String now() {
         return LocalDateTime.now()
                 .format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"));

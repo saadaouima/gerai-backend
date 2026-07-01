@@ -10,15 +10,44 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
+/**
+ * Repository Spring Data JPA pour la gestion des enregistrements de lecture de messages.
+ * <p>
+ * {@code @Repository} : déclare cette interface comme composant de persistance Spring,
+ * avec traduction automatique des exceptions JPA en exceptions Spring.
+ * <p>
+ * Gère la table {@code MESSAGE_READS} qui implémente le tracking de lecture
+ * message par message et employé par employé.
+ *
+ * @since 1.0
+ */
 @Repository
 public interface MessageReadRepository extends JpaRepository<MessageRead, Long> {
 
+    /**
+     * Recherche l'enregistrement de lecture d'un message spécifique par un employé.
+     *
+     * @param messageId  l'identifiant Oracle du message
+     * @param employeeId l'identifiant Oracle de l'employé
+     * @return un {@link Optional} contenant l'enregistrement de lecture s'il existe
+     */
     Optional<MessageRead> findByMessage_MessageIdAndEmployeeId(
             Long messageId, Long employeeId);
 
     /**
-     * Marque comme lus tous les messages d'une conversation
-     * que l'employé n'a pas encore lus.
+     * Marque comme lus, en une seule requête SQL native, tous les messages non lus
+     * d'une conversation pour un employé donné.
+     * <p>
+     * N'insère que les lignes pour les messages que l'employé n'a pas encore lus
+     * (exclut ses propres messages et les messages déjà lus).
+     * <p>
+     * {@code @Modifying} : indique à Spring Data qu'il s'agit d'une requête de modification (INSERT).
+     * <br>
+     * {@code @Transactional} : assure l'exécution dans une transaction.
+     *
+     * @param conversationId l'identifiant Oracle de la conversation à marquer comme lue
+     * @param employeeId     l'identifiant Oracle de l'employé lecteur
+     * @param readAt         l'horodatage de lecture à enregistrer
      */
     @Modifying
     @Transactional
@@ -39,6 +68,14 @@ public interface MessageReadRepository extends JpaRepository<MessageRead, Long> 
                        @Param("employeeId")     Long employeeId,
                        @Param("readAt")         LocalDateTime readAt);
 
-    /** Vérifie si un message a été lu par un employé */
+    /**
+     * Vérifie si un message a été lu par un employé spécifique.
+     * Utilisé dans {@link com.gerai.chat.service.ChatService} pour calculer
+     * le champ {@code luParMoi} du {@link com.gerai.chat.dto.MessageDTO}.
+     *
+     * @param messageId  l'identifiant Oracle du message
+     * @param employeeId l'identifiant Oracle de l'employé
+     * @return {@code true} si une ligne de lecture existe pour cette combinaison
+     */
     boolean existsByMessage_MessageIdAndEmployeeId(Long messageId, Long employeeId);
 }

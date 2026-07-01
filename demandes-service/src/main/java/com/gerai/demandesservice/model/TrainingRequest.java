@@ -8,10 +8,17 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * Entité mappée sur GERAI.TRAINING_REQUESTS (11 colonnes).
- *
+ * Entité JPA représentant une demande de formation professionnelle soumise par un employé.
+ * Mappée sur la table Oracle {@code GERAI.TRAINING_REQUESTS}.
+ * <p>
+ * Workflow : EN_ATTENTE → APPROUVE_CHEF → APPROUVE_RH → PLANIFIEE → EN_COURS → COMPLETEE | REFUSE | ANNULE.
+ * Le chef valide l'opportunité (étape 1), le RH confirme le budget et planifie (étape 2),
+ * puis suit l'avancement (PLANIFIEE → EN_COURS → COMPLETEE).
+ * <p>
  * Statuts valides (CHECK Oracle) :
- *   EN_ATTENTE | APPROUVE_CHEF | APPROUVE_RH | REFUSE | ANNULE
+ *   EN_ATTENTE | APPROUVE_CHEF | APPROUVE_RH | PLANIFIEE | EN_COURS | COMPLETEE | REFUSE | ANNULE
+ *
+ * @since 1.0
  */
 @Entity
 @Table(name = "TRAINING_REQUESTS")
@@ -81,9 +88,14 @@ public class TrainingRequest {
     @Column(name = "APPROVED_BY_RH_NAME", length = 200)
     private String approvedByRhName;
 
+    /** Horodatage de création de la demande — positionné par {@code @PrePersist}. */
     @Column(name = "CREATED_AT", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    /**
+     * Initialise {@code createdAt} à l'heure courante et le statut à {@code EN_ATTENTE} si null,
+     * avant l'insertion JPA.
+     */
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();

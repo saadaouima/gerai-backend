@@ -7,10 +7,17 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * Entité mappée sur GERAI.AUTHORIZATION_REQUESTS (10 colonnes).
- *
+ * Entité JPA représentant une demande d'autorisation d'absence (sortie anticipée,
+ * rendez-vous médical, obligation légale, etc.).
+ * Mappée sur la table Oracle {@code GERAI.AUTHORIZATION_REQUESTS}.
+ * <p>
+ * Workflow : EN_ATTENTE → APPROUVE (flux direct chef) | REFUSE.
+ * La durée est exprimée en heures (demi-journées, heures isolées).
+ * <p>
  * Statuts valides (CHECK Oracle) :
  *   EN_ATTENTE | APPROUVE | REFUSE
+ *
+ * @since 1.0
  */
 @Entity
 @Table(name = "AUTHORIZATION_REQUESTS")
@@ -56,9 +63,14 @@ public class AuthorizationRequest {
     @Column(name = "APPROVED_AT")
     private LocalDateTime approvedAt;
 
+    /** Horodatage de création de la demande — positionné automatiquement par {@code @PrePersist}. */
     @Column(name = "CREATED_AT", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    /**
+     * Initialise les champs techniques avant l'insertion JPA :
+     * positionne {@code createdAt} à l'heure courante et le statut à {@code EN_ATTENTE} si null.
+     */
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();

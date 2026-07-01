@@ -20,6 +20,29 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
+/**
+ * Service de génération des rapports RH au format PDF et Excel via JasperReports.
+ *
+ * Rapports disponibles :
+ * <ul>
+ *   <li>Congés : {@code reports/conges_report.jrxml} (PDF) / {@code reports/conges_report_excel.jrxml} (Excel)</li>
+ *   <li>Formations : {@code reports/formations_report.jrxml} (PDF) / {@code reports/formations_report_excel.jrxml} (Excel)</li>
+ *   <li>Projets : {@code reports/projets_report.jrxml} (PDF)</li>
+ *   <li>Dashboard RH : {@code reports/dashboard_report.jrxml} (PDF)</li>
+ *   <li>Fiche employé : {@code /reports/fiche_employe.jrxml} (PDF)</li>
+ * </ul>
+ *
+ * Le filtrage des données par rôle (Chef vs RH/Admin) est délégué à {@link StatsService} ;
+ * ce service se concentre uniquement sur la compilation et le remplissage JasperReports.
+ * Les données sont normalisées (clés en majuscules, {@code Long}/{@code Integer} convertis
+ * en {@code BigDecimal}) pour respecter les contraintes des templates JRXML.
+ *
+ * {@code @Service} : bean Spring géré par le conteneur IoC.
+ * {@code @Slf4j} : injecte un logger SLF4J pour la traçabilité des appels.
+ * {@code @RequiredArgsConstructor} : génère le constructeur avec injection de {@link StatsService}.
+ *
+ * @since 1.0
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -29,11 +52,30 @@ public class ReportService {
 
     /* ── Congés ──────────────────────────────────────── */
 
+    /**
+     * Génère le rapport PDF récapitulatif des congés.
+     * Pour un Chef, seuls les congés de son département sont inclus.
+     * Pour un RH/Admin, un filtre optionnel par département peut être appliqué.
+     *
+     * @param deptId identifiant de département optionnel (null = tous les départements pour RH)
+     * @param auth   le contexte d'authentification pour le filtrage par rôle
+     * @return le contenu binaire du PDF généré
+     * @throws JRException en cas d'erreur JasperReports lors de la compilation ou du remplissage
+     */
     public byte[] generateCongesPdf(Long deptId, Authentication auth) throws JRException {
         return pdf("reports/conges_report.jrxml", buildCongesParams(),
                 statsService.getCongesForReport(deptId, auth));
     }
 
+    /**
+     * Génère le rapport Excel (XLSX) récapitulatif des congés.
+     * Le filtrage par rôle est identique à {@link #generateCongesPdf(Long, Authentication)}.
+     *
+     * @param deptId identifiant de département optionnel (null = tous les départements pour RH)
+     * @param auth   le contexte d'authentification pour le filtrage par rôle
+     * @return le contenu binaire du fichier XLSX généré
+     * @throws JRException en cas d'erreur JasperReports lors de la compilation ou de l'export
+     */
     public byte[] generateCongesExcel(Long deptId, Authentication auth) throws JRException {
         return excel("reports/conges_report_excel.jrxml", buildCongesParams(),
                 statsService.getCongesForReport(deptId, auth));
@@ -41,11 +83,29 @@ public class ReportService {
 
     /* ── Formations ──────────────────────────────────── */
 
+    /**
+     * Génère le rapport PDF des formations RH.
+     * Le filtrage par rôle est identique à {@link #generateCongesPdf(Long, Authentication)}.
+     *
+     * @param deptId identifiant de département optionnel (null = tous les départements pour RH)
+     * @param auth   le contexte d'authentification pour le filtrage par rôle
+     * @return le contenu binaire du PDF généré
+     * @throws JRException en cas d'erreur JasperReports
+     */
     public byte[] generateFormationsPdf(Long deptId, Authentication auth) throws JRException {
         return pdf("reports/formations_report.jrxml", buildFormationsParams(),
                 statsService.getFormationsForReport(deptId, auth));
     }
 
+    /**
+     * Génère le rapport Excel (XLSX) des formations RH.
+     * Le filtrage par rôle est identique à {@link #generateCongesPdf(Long, Authentication)}.
+     *
+     * @param deptId identifiant de département optionnel (null = tous les départements pour RH)
+     * @param auth   le contexte d'authentification pour le filtrage par rôle
+     * @return le contenu binaire du fichier XLSX généré
+     * @throws JRException en cas d'erreur JasperReports lors de l'export
+     */
     public byte[] generateFormationsExcel(Long deptId, Authentication auth) throws JRException {
         return excel("reports/formations_report_excel.jrxml", buildFormationsParams(),
                 statsService.getFormationsForReport(deptId, auth));
@@ -53,6 +113,16 @@ public class ReportService {
 
     /* ── Projets ─────────────────────────────────────── */
 
+    /**
+     * Génère le rapport PDF des projets RH.
+     * Pour un Chef, seuls les projets dont il est créateur sont inclus.
+     * Pour un RH/Admin, tous les projets sont retournés.
+     *
+     * @param deptId identifiant de département optionnel (non utilisé pour les projets, filtré par créateur)
+     * @param auth   le contexte d'authentification pour la résolution du rôle
+     * @return le contenu binaire du PDF généré
+     * @throws JRException en cas d'erreur JasperReports
+     */
     public byte[] generateProjetsPdf(Long deptId, Authentication auth) throws JRException {
         return pdf("reports/projets_report.jrxml", buildProjetsParams(deptId, auth),
                 statsService.getProjetsForReport(deptId, auth));
@@ -107,6 +177,14 @@ public class ReportService {
 
     /* ── Dashboard (RH global — null = pas de filtre rôle) ── */
 
+    /**
+     * Génère le rapport PDF du tableau de bord RH global.
+     * Aucun filtre par département — toutes les données sont agrégées.
+     * Inclut les KPIs principaux : absences, formations, projets, demandes.
+     *
+     * @return le contenu binaire du PDF généré
+     * @throws JRException en cas d'erreur JasperReports lors de la compilation ou du remplissage
+     */
     public byte[] generateDashboardPdf() throws JRException {
         // getDashboard(null) retourne le dashboard global sans filtre département
         var dashboard  = statsService.getDashboard(null);
@@ -137,11 +215,31 @@ public class ReportService {
        MOTEUR JASPER
        ══════════════════════════════════════════════════ */
 
+    /**
+     * Compile et remplit un rapport JasperReports, puis l'exporte en PDF.
+     *
+     * @param path   le chemin classpath du fichier JRXML (ex : "reports/conges_report.jrxml")
+     * @param params la map des paramètres passés au rapport Jasper
+     * @param data   les données de la source de données (liste de maps clé-valeur)
+     * @return le contenu binaire du PDF généré
+     * @throws JRException en cas d'erreur lors de la compilation, du remplissage ou de l'export
+     */
     private byte[] pdf(String path, Map<String, Object> params,
                        List<Map<String, Object>> data) throws JRException {
         return JasperExportManager.exportReportToPdf(fill(path, params, data));
     }
 
+    /**
+     * Compile et remplit un rapport JasperReports, puis l'exporte en Excel (XLSX).
+     * La configuration Excel désactive les pages multiples, supprime les espaces vides,
+     * détecte les types de cellules et masque l'arrière-plan blanc.
+     *
+     * @param path   le chemin classpath du fichier JRXML (ex : "reports/conges_report_excel.jrxml")
+     * @param params la map des paramètres passés au rapport Jasper
+     * @param data   les données de la source de données (liste de maps clé-valeur)
+     * @return le contenu binaire du fichier XLSX généré
+     * @throws JRException en cas d'erreur lors de la compilation, du remplissage ou de l'export
+     */
     private byte[] excel(String path, Map<String, Object> params,
                          List<Map<String, Object>> data) throws JRException {
         try {
@@ -163,6 +261,17 @@ public class ReportService {
         }
     }
 
+    /**
+     * Charge, compile et remplit un rapport JasperReports depuis le classpath.
+     * Normalise les données : clés converties en majuscules, {@code Long}/{@code Integer}
+     * convertis en {@code BigDecimal} pour la compatibilité avec les champs numériques JRXML.
+     *
+     * @param path   le chemin classpath du fichier JRXML
+     * @param params la map des paramètres Jasper
+     * @param data   les données brutes à injecter dans la source de données
+     * @return le {@link JasperPrint} prêt à exporter
+     * @throws JRException en cas d'erreur de compilation, de chargement ou de remplissage
+     */
     private JasperPrint fill(String path, Map<String, Object> params,
                              List<Map<String, Object>> data) throws JRException {
         try (InputStream in = new ClassPathResource(path).getInputStream()) {
@@ -191,6 +300,13 @@ public class ReportService {
 
     /* ── Builders ────────────────────────────────────── */
 
+    /**
+     * Crée la map de paramètres de base commune à tous les rapports Jasper.
+     * Contient les clés REPORT_TITLE et GENERATED_DATE.
+     *
+     * @param titre le titre du rapport à afficher dans l'en-tête
+     * @return la map de paramètres de base initialisée
+     */
     private Map<String, Object> base(String titre) {
         Map<String, Object> p = new LinkedHashMap<>();
         p.put("REPORT_TITLE",   titre);
@@ -199,6 +315,13 @@ public class ReportService {
         return p;
     }
 
+    /**
+     * Construit la map de paramètres spécifiques au rapport des congés.
+     * Récupère les statistiques globales de congé depuis {@link StatsService}.
+     * Paramètres : TOTAL_CONGES, CONGES_VALIDES, CONGES_REFUSES, MOYENNE_JOURS.
+     *
+     * @return la map de paramètres pour le rapport congés, enrichie des KPIs
+     */
     private Map<String, Object> buildCongesParams() {
         Map<String, Object> p = base("Récapitulatif des Congés");
         var s = statsService.getCongeStats();
@@ -209,6 +332,12 @@ public class ReportService {
         return p;
     }
 
+    /**
+     * Construit la map de paramètres spécifiques au rapport des formations.
+     * Paramètres : TOTAL_FORMATIONS, FORMATIONS_VALIDEES, BUDGET_TOTAL, MOYENNE_DUREE.
+     *
+     * @return la map de paramètres pour le rapport formations, enrichie des KPIs
+     */
     private Map<String, Object> buildFormationsParams() {
         Map<String, Object> p = base("Rapport des Formations");
         var s = statsService.getFormationStats();
@@ -219,6 +348,15 @@ public class ReportService {
         return p;
     }
 
+    /**
+     * Construit la map de paramètres spécifiques au rapport des projets.
+     * Calcule les totaux par statut directement à partir des données du rapport.
+     * Paramètres : TOTAL_PROJETS, PROJETS_EN_COURS, PROJETS_TERMINES.
+     *
+     * @param deptId identifiant de département optionnel (non utilisé pour les projets)
+     * @param auth   le contexte d'authentification pour la résolution du rôle
+     * @return la map de paramètres pour le rapport projets, enrichie des KPIs
+     */
     private Map<String, Object> buildProjetsParams(Long deptId, Authentication auth) {
         Map<String, Object> p = base("Rapport des Projets");
         List<Map<String, Object>> rows = statsService.getProjetsForReport(deptId, auth);

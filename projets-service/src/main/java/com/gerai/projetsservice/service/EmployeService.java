@@ -14,25 +14,48 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Client REST vers employee-service.
- * Cache en mémoire pour éviter N appels lors du mapping des membres.
+ * Client REST vers {@code employee-service} avec cache en mémoire et repli Oracle.
+ * <p>
+ * Stratégie de résolution des données employé (dans l'ordre) :
+ * <ol>
+ *   <li>Cache en mémoire ({@link ConcurrentHashMap}) — évite les N+1 appels lors du mapping des membres.</li>
+ *   <li>Appel REST à {@code employee-service} via {@link RestTemplate}.</li>
+ *   <li>Requête Oracle directe (même base de données partagée) si {@code employee-service} est indisponible.</li>
+ *   <li>Placeholder {@code "Employé #id"} en dernier recours.</li>
+ * </ol>
+ * </p>
+ * <p>
+ * {@code @Service} : composant Spring géré par le conteneur IoC.<br>
+ * {@code @Slf4j} : journalisation SLF4J via Lombok.
+ * </p>
  *
- * Si employee-service n'est pas disponible, retombe sur une requête Oracle directe
- * pour garantir que les noms apparaissent correctement dans les notifications.
+ * @since 1.0
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class EmployeService {
 
+    /** Template JDBC pour le repli sur une requête Oracle directe. */
     private final JdbcTemplate jdbcTemplate;
 
+    /** URL de base de l'employee-service (configurable via {@code app.services.employee-url}). */
     @Value("${app.services.employee-url:http://localhost:8081}")
     private String employeeServiceUrl;
 
+    /** Client HTTP pour les appels REST vers employee-service. */
     private final RestTemplate          restTemplate = new RestTemplate();
+    /** Cache en mémoire des DTOs d'employés indexés par identifiant Oracle. */
     private final Map<Long, EmployeDTO> cache        = new ConcurrentHashMap<>();
 
+    /**
+     * Récupère tous les employés depuis {@code employee-service} et les met en cache.
+     * <p>
+     * En cas d'indisponibilité du service, retourne une liste vide sans lever d'exception.
+     * </p>
+     *
+     * @return liste complète des employés, vide si le service est inaccessible
+     */
     public List<EmployeDTO> getAllEmployes() {
         try {
             EmployeDTO[] arr = restTemplate.getForObject(
@@ -47,6 +70,15 @@ public class EmployeService {
         return List.of();
     }
 
+    /**
+     * Résout le DTO d'un employé par son identifiant Oracle, avec cache et replis multiples.
+     * <p>
+     * Ne lève jamais d'exception : retourne un placeholder {@code "Employé #id"} en dernier recours.
+     * </p>
+     *
+     * @param employeeId identifiant Oracle de l'employé ({@code EMPLOYEES.EMPLOYEE_ID})
+     * @return le DTO de l'employé, ou un placeholder si toutes les stratégies échouent
+     */
     public EmployeDTO getEmployeById(Long employeeId) {
         if (cache.containsKey(employeeId)) return cache.get(employeeId);
 

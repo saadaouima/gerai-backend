@@ -8,15 +8,21 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * DTO unifié réponse — couvre les deux interfaces Angular :
+ * DTO unifié de réponse pour les tâches, couvrant les deux espaces Angular.
+ * <p>
+ * Utilisé dans deux contextes distincts :
+ * <ul>
+ *   <li><b>Espace Chef</b> ({@code affectation-taches}) : champs utilisés —
+ *       id, titre, projet, priorite, prioriteColor, echeance, assigneA.</li>
+ *   <li><b>Espace Employé</b> ({@code liste-taches}, Kanban) : champs utilisés —
+ *       id, titre, projet, priorite, prioriteColor, statut, echeance, progression.</li>
+ * </ul>
+ * <p>
+ * {@code @JsonInclude(NON_NULL)} : les champs null sont omis du JSON pour
+ * alléger les réponses selon le contexte d'utilisation.
+ * {@code @Builder} : permet la construction fluide des instances dans les mappers du service.
  *
- * Tache (affectation-taches, espace Chef) :
- *   id, titre, projet, priorite, prioriteColor, echeance, assigneA
- *
- * TacheKanban (liste-taches, espace Employé) :
- *   id, titre, projet, priorite, prioriteColor, statut, echeance, progression
- *
- * Les champs null sont omis du JSON (@JsonInclude).
+ * @since 1.0
  */
 @Data
 @Builder
@@ -26,73 +32,84 @@ import java.time.LocalDateTime;
 public class TacheDTO {
 
     /* ── Identité ──────────────────────────────────────── */
+
+    /** Identifiant Oracle de la tâche (TASKS.task_id). */
     private Long   id;
 
-    /** TASKS.title */
+    /** Titre de la tâche (TASKS.title). */
     private String titre;
 
-    /** Nom du projet parent (PROJECTS.name) */
+    /** Nom du projet parent (PROJECTS.name), résolu via Feign. */
     private String projet;
 
-    /** ID du projet parent */
+    /** Identifiant Oracle du projet parent (TASKS.project_id). */
     private Long   projetId;
 
     /* ── Priorité ──────────────────────────────────────── */
 
     /**
-     * TASKS.priority : FAIBLE | NORMALE | HAUTE | CRITIQUE
-     * Converti en label Angular : Basse | Moyenne | Haute | Critique
+     * Priorité de la tâche convertie en label Angular.
+     * Oracle : FAIBLE | NORMALE | HAUTE | CRITIQUE.
+     * Angular : Basse | Moyenne | Haute | Critique.
      */
     private String priorite;
 
     /**
-     * Couleur HEX calculée depuis priority — attendue par Angular :
-     *   Haute    → #ff5370
-     *   Moyenne  → #FFB64D
-     *   Basse    → #2ed8b6
-     *   Critique → #ff5370 (même couleur que Haute)
+     * Couleur HEX associée à la priorité, calculée par le service.
+     * Valeurs : Haute → {@code #ff5370}, Moyenne → {@code #FFB64D}, Basse → {@code #2ed8b6}.
      */
     private String prioriteColor;
 
     /* ── Statut ──────────────────────────────────────── */
 
     /**
-     * Statut Oracle : A_FAIRE | EN_COURS | EN_REVUE | TERMINE | BLOQUE
-     * Angular Kanban : A_FAIRE | EN_COURS | TERMINEE
-     * (EN_REVUE et BLOQUE mappés en EN_COURS pour le Kanban employé)
+     * Statut de la tâche converti pour Angular.
+     * Oracle : A_FAIRE | EN_COURS | EN_REVUE | TERMINE | BLOQUE.
+     * Angular Kanban : A_FAIRE | EN_COURS | TERMINEE.
+     * (EN_REVUE et BLOQUE sont mappés en EN_COURS ou A_FAIRE pour le Kanban employé.)
      */
     private String statut;
 
     /* ── Dates ───────────────────────────────────────── */
 
-    /** TASKS.due_date — format dd/MM/yyyy attendu par | date pipe Angular */
+    /**
+     * Date d'échéance de la tâche (TASKS.due_date).
+     * Formatée par le pipe Angular {@code date:'dd/MM/yyyy'}.
+     */
     private LocalDate echeance;
 
-    /** TASKS.created_at */
+    /** Date et heure de création de la tâche (TASKS.created_at). */
     private LocalDateTime dateCreation;
 
     /* ── Assignation ─────────────────────────────────── */
 
-    /** "Prénom Nom" de l'assigné — attendu par getInitiales() Angular */
+    /**
+     * Nom complet ("Prénom Nom") de l'employé assigné, résolu depuis EMPLOYEES.
+     * Utilisé par la fonction {@code getInitiales()} dans Angular pour afficher l'avatar.
+     */
     private String  assigneA;
 
-    /** TASKS.assigned_to (employee_id Oracle) */
+    /** Identifiant Oracle de l'employé assigné (TASKS.assigned_to). */
     private Long    assigneId;
 
-    /** TASKS.created_by */
+    /** Identifiant Oracle du créateur de la tâche (TASKS.created_by). */
     private Long    creePar;
 
     /* ── Progression ─────────────────────────────────── */
 
-    /** TASKS.progress_pct NUMBER(3) 0-100 */
+    /** Pourcentage de progression de la tâche (TASKS.progress_pct), entre 0 et 100. */
     private Integer progression;
 
     /* ── Description ─────────────────────────────────── */
 
-    /** TASKS.description (CLOB) */
+    /** Description détaillée de la tâche (TASKS.description, type CLOB en Oracle). */
     private String description;
 
     /* ── Heures ──────────────────────────────────────── */
+
+    /** Nombre d'heures estimées pour réaliser la tâche (TASKS.estimated_hours). */
     private BigDecimal heuresEstimees;
+
+    /** Nombre d'heures réellement passées sur la tâche (TASKS.actual_hours). */
     private BigDecimal heuresReelles;
 }

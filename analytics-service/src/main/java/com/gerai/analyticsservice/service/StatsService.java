@@ -18,6 +18,30 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.*;
+/**
+ * Service principal des statistiques analytiques RH.
+ *
+ * Responsabilités :
+ * <ul>
+ *   <li>Calcul et mise en cache des statistiques du tableau de bord (congés, formations, projets)</li>
+ *   <li>Filtrage des données selon le rôle de l'utilisateur connecté (ADMIN/RH vs Chef)</li>
+ *   <li>Mise à jour de la table ABSENCE_STATS lors de la réception d'événements Kafka</li>
+ *   <li>Fourniture des données brutes pour la génération des rapports JasperReports</li>
+ * </ul>
+ *
+ * Stratégie de filtrage par rôle :
+ * <ul>
+ *   <li>ADMIN/RH → données globales, tous départements</li>
+ *   <li>CHEF → données filtrées sur son département, résolu via JWT puis Oracle</li>
+ * </ul>
+ *
+ * {@code @Service} : bean Spring géré par le conteneur IoC.
+ * {@code @Slf4j} : injecte un logger SLF4J pour la traçabilité des opérations.
+ * {@code @RequiredArgsConstructor} : injection de {@link AnalyticsRepository},
+ * {@link AbsenceStatsRepository} et {@link JwtHelper} via constructeur.
+ *
+ * @since 1.0
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -53,6 +77,13 @@ public class StatsService {
         }
     }
 
+    /**
+     * Construit le tableau de bord global (tous départements) pour les rôles ADMIN/RH.
+     * Agrège les comptages de la vue V_ALL_DEMANDES, les KPIs temps réel (absents, projets,
+     * tâches) et calcule les taux d'acceptation et d'absentéisme.
+     *
+     * @return un {@link DashboardSummaryDTO} avec les KPIs globaux de l'organisation
+     */
     private DashboardSummaryDTO buildDashboardGlobal() {
         long total    = repo.countTotal();
         long enAttente = repo.countByStatut("EN_ATTENTE");
@@ -83,6 +114,14 @@ public class StatsService {
                 .build();
     }
 
+    /**
+     * Construit le tableau de bord filtré sur le département du Chef connecté.
+     * Si le département ne peut pas être résolu (claim JWT manquant et Oracle introuvable),
+     * retourne le dashboard global à titre de repli.
+     *
+     * @param auth le contexte d'authentification du Chef
+     * @return un {@link DashboardSummaryDTO} avec les KPIs du département du Chef
+     */
     private DashboardSummaryDTO buildDashboardChef(Authentication auth) {
         Long deptId = resolveDeptId(auth);
         if (deptId == null) {
@@ -116,6 +155,13 @@ public class StatsService {
        STATS CONGÉS
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Retourne les statistiques globales des congés (tous départements).
+     * Le résultat est mis en cache sous la clé "conge-stats".
+     * En cas d'erreur Oracle, retourne un {@link CongeStatsDTO} vide plutôt que de lever une exception.
+     *
+     * @return un {@link CongeStatsDTO} avec les comptages, taux et répartitions des congés
+     */
     @Cacheable("conge-stats")
     @Transactional(readOnly = true)
     public CongeStatsDTO getCongeStats() {
@@ -147,6 +193,13 @@ public class StatsService {
        STATS FORMATIONS
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Retourne les statistiques globales des formations RH (tous départements).
+     * Le résultat est mis en cache sous la clé "formation-stats".
+     * En cas d'erreur Oracle, retourne un {@link FormationStatsDTO} vide.
+     *
+     * @return un {@link FormationStatsDTO} avec les comptages, budget, durée et taux de validation
+     */
     @Cacheable("formation-stats")
     @Transactional(readOnly = true)
     public FormationStatsDTO getFormationStats() {
@@ -177,6 +230,13 @@ public class StatsService {
        PAR MOIS + TYPE
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Retourne la liste des demandes RH groupées par mois et par type.
+     * Le résultat est mis en cache sous la clé "par-mois".
+     * Chaque entrée contient les clés : "mois" (format YYYY-MM), "type" et "total".
+     *
+     * @return la liste des agrégats mensuels par type de demande, triés par mois puis par type
+     */
     @Cacheable("par-mois")
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getDemandesParMoisEtType() {
@@ -199,6 +259,16 @@ public class StatsService {
        Pour RH/ADMIN, le deptId de l'URL sert de filtre optionnel.
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Retourne les données brutes des congés pour le rapport JasperReports.
+     * Le filtrage par département est automatique selon le rôle de l'utilisateur :
+     * le Chef voit uniquement son département, le RH/Admin peut filtrer par {@code deptIdFromUrl}.
+     * Retourne une liste vide en cas d'erreur Oracle.
+     *
+     * @param deptIdFromUrl identifiant de département fourni par l'URL (ignoré pour les Chefs)
+     * @param auth          le contexte d'authentification pour la résolution du rôle
+     * @return la liste des demandes de congé avec toutes les colonnes du rapport
+     */
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getCongesForReport(Long deptIdFromUrl,
                                                         Authentication auth) {
@@ -206,16 +276,24 @@ public class StatsService {
         catch (Exception e) { log.error("[Stats] getCongesForReport error: {}", e.getMessage()); return List.of(); }
     }
 
+    /**
+     * Implémentation interne du filtrage des congés selon le rôle.
+     * Sépare la logique de filtrage de la gestion des erreurs de la méthode publique.
+     *
+     * @param deptIdFromUrl identifiant de département fourni par l'URL (ignoré pour les Chefs)
+     * @param auth          le contexte d'authentification
+     * @return la liste des demandes de congé filtrées par rôle
+     */
     private List<Map<String, Object>> getCongesForReportInternal(Long deptIdFromUrl,
                                                                   Authentication auth) {
         List<Object[]> rows;
 
         if (jwt.isChef(auth)) {
-            // Chef → forcer son département, ignorer l'URL
-            Long deptId = resolveDeptId(auth);
-            log.info("[Stats] Congés rapport Chef | dept={}", deptId);
-            rows = deptId != null
-                    ? repo.listeCongesParDepartement(deptId)
+            // Chef → congés des membres directs (MANAGER_ID + PROJECT_MEMBERS)
+            Long employeeId = resolveEmployeeId(auth);
+            log.info("[Stats] Congés rapport Chef | employeeId={}", employeeId);
+            rows = employeeId != null
+                    ? repo.listeCongesParManager(employeeId)
                     : repo.listeCongesForReport();
 
         } else if (deptIdFromUrl != null) {
@@ -232,13 +310,22 @@ public class StatsService {
         return rowsToMaps(rows,
                 "REQUESTID","MATRICULE","EMPLOYE_NOM","DEPARTEMENT",
                 "DATE_DEBUT","DATE_FIN","NB_JOURS","STATUT",
-                "MOTIF","COMMENTAIRE_RH","DATE_CREATION");
+                "TYPE_CONGE","MOTIF","COMMENTAIRE_RH","DATE_CREATION");
     }
 
     /* ═══════════════════════════════════════════════════════
        DONNÉES RAPPORT — FORMATIONS
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Retourne les données brutes des formations pour le rapport JasperReports.
+     * Le filtrage par département est automatique selon le rôle de l'utilisateur.
+     * Retourne une liste vide en cas d'erreur Oracle.
+     *
+     * @param deptIdFromUrl identifiant de département fourni par l'URL (ignoré pour les Chefs)
+     * @param auth          le contexte d'authentification pour la résolution du rôle
+     * @return la liste des demandes de formation avec toutes les colonnes du rapport
+     */
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getFormationsForReport(Long deptIdFromUrl,
                                                             Authentication auth) {
@@ -246,6 +333,13 @@ public class StatsService {
         catch (Exception e) { log.error("[Stats] getFormationsForReport error: {}", e.getMessage()); return List.of(); }
     }
 
+    /**
+     * Implémentation interne du filtrage des formations selon le rôle.
+     *
+     * @param deptIdFromUrl identifiant de département fourni par l'URL (ignoré pour les Chefs)
+     * @param auth          le contexte d'authentification
+     * @return la liste des demandes de formation filtrées par rôle
+     */
     private List<Map<String, Object>> getFormationsForReportInternal(Long deptIdFromUrl,
                                                                       Authentication auth) {
         List<Object[]> rows;
@@ -276,6 +370,16 @@ public class StatsService {
        DONNÉES RAPPORT — PROJETS
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Retourne les données brutes des projets pour le rapport JasperReports.
+     * Pour un Chef, seuls les projets dont il est créateur sont retournés.
+     * Pour un RH/Admin, tous les projets sont retournés.
+     * Retourne une liste vide en cas d'erreur Oracle.
+     *
+     * @param deptIdFromUrl identifiant de département fourni par l'URL (non utilisé pour les projets)
+     * @param auth          le contexte d'authentification pour la résolution du rôle
+     * @return la liste des projets avec toutes les colonnes du rapport
+     */
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getProjetsForReport(Long deptIdFromUrl,
                                                          Authentication auth) {
@@ -283,6 +387,13 @@ public class StatsService {
         catch (Exception e) { log.error("[Stats] getProjetsForReport error: {}", e.getMessage()); return List.of(); }
     }
 
+    /**
+     * Implémentation interne du filtrage des projets selon le rôle.
+     *
+     * @param deptIdFromUrl identifiant de département fourni par l'URL (non utilisé)
+     * @param auth          le contexte d'authentification
+     * @return la liste des projets filtrés par créateur (pour les Chefs) ou tous les projets
+     */
     private List<Map<String, Object>> getProjetsForReportInternal(Long deptIdFromUrl,
                                                                    Authentication auth) {
         List<Object[]> rows;
@@ -309,6 +420,13 @@ public class StatsService {
        FICHE EMPLOYÉ
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Retourne l'historique des demandes RH d'un employé spécifique depuis la vue V_ALL_DEMANDES.
+     * Colonnes retournées : TYPE, STATUT, DATE_CREATION, DESCRIPTION.
+     *
+     * @param employeeId l'identifiant Oracle de l'employé (EMPLOYEES.employee_id)
+     * @return la liste des demandes de l'employé, triées par date de création décroissante
+     */
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getDemandesEmploye(Long employeeId) {
         return rowsToMaps(repo.demandesParEmploye(employeeId),
@@ -319,12 +437,27 @@ public class StatsService {
        STATS PAR DÉPARTEMENT & TOP ABSENCES
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Retourne les statistiques agrégées par département pour le tableau de bord RH global.
+     * Colonnes retournées : DEPT_NAME, HEADCOUNT, NB_CONGES, NB_FORMATIONS, NB_PROJETS.
+     *
+     * @return la liste des statistiques par département, triées par nom de département
+     */
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getStatsParDepartement() {
         return rowsToMaps(repo.statsParDepartement(),
                 "DEPT_NAME","HEADCOUNT","NB_CONGES","NB_FORMATIONS","NB_PROJETS");
     }
 
+    /**
+     * Retourne le top 5 des employés les plus absents sur l'année courante.
+     * Pour un Chef, le résultat est filtré sur son département.
+     * Pour un RH/Admin, le résultat est global.
+     * Le résultat est mis en cache sous la clé "top-5-absences".
+     *
+     * @param auth le contexte d'authentification pour la résolution du rôle et du département
+     * @return la liste des 5 employés les plus absents avec NOM, DEPARTEMENT et TOTAL_JOURS
+     */
     @Cacheable("top-5-absences")
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getTop5EmployesAbsences(Authentication auth) {
@@ -343,6 +476,17 @@ public class StatsService {
        KAFKA EVENT → ABSENCE_STATS
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Traite un événement Kafka reçu depuis le demandes-service et met à jour
+     * la table ABSENCE_STATS en conséquence.
+     * <ul>
+     *   <li>Si le type est "CONGE" et le statut "VALIDE_RH" : incrémente les jours de congé</li>
+     *   <li>Si le statut est "REFUSE" : incrémente le compteur de demandes refusées</li>
+     * </ul>
+     * Invalide tous les caches après chaque mise à jour.
+     *
+     * @param event l'événement de demande RH reçu depuis le demandes-service
+     */
     @Transactional
     public void saveEvent(DemandeEvent event) {
         Long empId = parseLong(event.getDestinataireId());
@@ -362,6 +506,14 @@ public class StatsService {
         invalidateAllCaches();
     }
 
+    /**
+     * Crée ou met à jour la ligne ABSENCE_STATS pour l'employé et le mois courant.
+     * Utilise un upsert (findOrCreate) pour éviter les violations de contrainte d'unicité.
+     *
+     * @param empId   l'identifiant Oracle de l'employé (EMPLOYEES.employee_id)
+     * @param jours   le nombre de jours de congé à ajouter (0 si c'est un refus)
+     * @param isRefus {@code true} si l'événement est un refus de demande, {@code false} si c'est un congé validé
+     */
     private void upsertAbsenceStats(Long empId, double jours, boolean isRefus) {
         int annee = LocalDateTime.now().getYear();
         int mois  = LocalDateTime.now().getMonthValue();
@@ -384,6 +536,11 @@ public class StatsService {
        CACHE
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Invalide tous les caches de statistiques.
+     * Appelé automatiquement après chaque mise à jour de la table ABSENCE_STATS
+     * (via {@link #saveEvent(DemandeEvent)}).
+     */
     @CacheEvict(value={"dashboard","conge-stats","formation-stats","par-mois","top-5-absences"},
             allEntries=true)
     public void invalidateAllCaches() {
@@ -431,6 +588,13 @@ public class StatsService {
         return null;
     }
 
+    /**
+     * Résout l'identifiant Oracle d'un employé à partir du JWT.
+     * Essaie d'abord via le sub Keycloak, puis via l'email comme fallback.
+     *
+     * @param auth le contexte d'authentification du Chef
+     * @return l'identifiant Oracle de l'employé, ou {@code null} si non résolu
+     */
     private Long resolveEmployeeId(Authentication auth) {
         String sub = jwt.getSubject(auth);
         if (sub != null) {
@@ -450,12 +614,26 @@ public class StatsService {
        HELPERS
        ═══════════════════════════════════════════════════════ */
 
+    /**
+     * Tente de parser un identifiant String en {@code Long}.
+     * Retourne {@code null} si la chaîne est vide, nulle ou non numérique.
+     *
+     * @param s la chaîne à parser (ex : "42")
+     * @return la valeur {@code Long} correspondante, ou {@code null} si non parseable
+     */
     private Long parseLong(String s) {
         if (s == null || s.isBlank()) return null;
         try { return Long.parseLong(s.trim()); }
         catch (NumberFormatException e) { return null; }
     }
 
+    /**
+     * Convertit une liste de paires Oracle {@code [clé, valeur]} en {@link Map} String→Long.
+     * Les valeurs nulles de clé sont remplacées par "INCONNU".
+     *
+     * @param rows la liste de tableaux Oracle à deux colonnes [clé, valeur]
+     * @return une {@link LinkedHashMap} préservant l'ordre d'insertion
+     */
     private Map<String, Long> toMap(List<Object[]> rows) {
         Map<String, Long> m = new LinkedHashMap<>();
         if (rows == null) return m;
@@ -465,6 +643,14 @@ public class StatsService {
         return m;
     }
 
+    /**
+     * Convertit une liste de tableaux Oracle en liste de maps clé-valeur nommées.
+     * Les colonnes sont nommées par les labels fournis dans {@code cols}.
+     *
+     * @param rows les lignes brutes Oracle
+     * @param cols les noms de colonnes dans l'ordre correspondant aux indices du tableau Oracle
+     * @return la liste des maps résultantes avec les noms de colonnes comme clés
+     */
     private List<Map<String, Object>> rowsToMaps(List<Object[]> rows, String... cols) {
         List<Map<String, Object>> result = new ArrayList<>();
         if (rows == null) return result;
@@ -478,6 +664,14 @@ public class StatsService {
         return result;
     }
 
+    /**
+     * Extrait la valeur {@code long} d'un tableau Oracle à l'indice donné.
+     * Retourne 0 si le tableau est null, l'indice hors limites, ou la valeur null/non numérique.
+     *
+     * @param row le tableau Oracle de valeurs
+     * @param idx l'indice de la colonne à extraire
+     * @return la valeur {@code long} de la colonne, ou 0 en cas de valeur manquante
+     */
     private long safeL(Object[] row, int idx) {
         if (row == null || idx >= row.length || row[idx] == null) return 0L;
         return row[idx] instanceof Number n ? n.longValue() : 0L;
@@ -485,7 +679,12 @@ public class StatsService {
     // Dans StatsService.java
 
     /**
-     * Récupère les infos de base pour l'en-tête de la fiche
+     * Récupère les informations de base d'un employé pour l'en-tête de la fiche signalétique.
+     * Colonnes mappées : NOM_COMPLET, PRENOM, NOM, MATRICULE, DEPARTEMENT, EMAIL, TELEPHONE, DATE_EMBAUCHE.
+     * Retourne une map avec "NOM_COMPLET" = "Employé Inconnu" si l'employé est introuvable.
+     *
+     * @param employeeId l'identifiant Oracle de l'employé (EMPLOYEES.employee_id)
+     * @return une map contenant les informations de base de l'employé
      */
     @Transactional(readOnly = true)
     public Map<String, Object> getEmployeInfos(Long employeeId) {
@@ -510,5 +709,11 @@ public class StatsService {
         }
         return infos;
     }
+    /**
+     * Arrondit une valeur {@code double} à 2 décimales pour l'affichage des taux et moyennes.
+     *
+     * @param v la valeur à arrondir
+     * @return la valeur arrondie à 2 décimales
+     */
     private double round2(double v) { return Math.round(v * 100.0) / 100.0; }
 }

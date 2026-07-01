@@ -21,20 +21,40 @@ import java.util.Map;
 public class FormationStatsDTO {
 
     /* ── Comptages ───────────────────────────────────── */
+
+    /** Nombre total de demandes de formation. */
     private long totalFormations;
-    private long formationsValidees;   // statut = APPROUVE_RH  (pas VALIDE_RH)
-    private long formationsRefusees;   // statut = REFUSE        (pas REJETE)
-    private long formationsEnAttente;  // statut = EN_ATTENTE
+
+    /** Nombre de formations approuvées par le RH (statut = APPROUVE_RH). */
+    private long formationsValidees;
+
+    /** Nombre de formations refusées (statut = REFUSE). */
+    private long formationsRefusees;
+
+    /** Nombre de formations en attente de validation (statut = EN_ATTENTE). */
+    private long formationsEnAttente;
 
     /* ── Indicateurs financiers / durée ──────────────── */
-    private double budgetTotal;        // SUM(estimated_cost) des APPROUVE_RH
-    private double moyenneDureeJours;  // AVG(duration_days)
+
+    /** Budget total alloué aux formations approuvées (SUM(estimated_cost) pour APPROUVE_RH). */
+    private double budgetTotal;
+
+    /** Durée moyenne des formations en jours (AVG de duration_days). */
+    private double moyenneDureeJours;
 
     /* ── Répartitions ────────────────────────────────── */
-    private Map<String, Long> formationsParMois;  // 2026-01:2 ...
-    private Map<String, Long> formationsParType;  // TECHNIQUE:5 ...
+
+    /** Répartition mensuelle des formations, clé au format "YYYY-MM" (ex : 2026-01:2). */
+    private Map<String, Long> formationsParMois;
+
+    /** Répartition par type de formation (ex : TECHNIQUE:5). */
+    private Map<String, Long> formationsParType;
 
     /* ── Taux ────────────────────────────────────────── */
-    private double tauxValidation;   // formationsValidees / total * 100
-    private double tauxRejet;        // formationsRefusees / total * 100
+
+    /** Taux de validation des formations en pourcentage (formationsValidees / total * 100). */
+    private double tauxValidation;
+
+    /** Taux de rejet des formations en pourcentage (formationsRefusees / total * 100). */
+    private double tauxRejet;
 }

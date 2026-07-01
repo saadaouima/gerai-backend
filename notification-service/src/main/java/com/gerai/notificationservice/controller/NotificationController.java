@@ -18,20 +18,36 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
- * Contrôleur REST des notifications.
+ * Contrôleur REST exposant l'API de gestion des notifications aux clients Angular.
+ * <p>
+ * {@code @RestController} : indique que cette classe est un contrôleur REST dont
+ * les méthodes retournent directement des objets sérialisés en JSON.<br>
+ * {@code @RequestMapping("/api/notifications")} : préfixe d'URL de tous les endpoints
+ * de ce contrôleur (authentification JWT requise, cf. {@code SecurityConfig}).<br>
+ * {@code @CrossOrigin} : autorise les requêtes CORS depuis le frontend Angular
+ * ({@code localhost:4200} par défaut).
+ * </p>
+ * <p>
+ * Stratégie d'identification de l'employé connecté : le JWT Keycloak contient un
+ * claim custom {@code employee_id} (identifiant Oracle {@code Long}). En l'absence
+ * de ce claim, un repli sur requête SQL est effectué. Si la résolution échoue,
+ * une réponse vide est renvoyée sans erreur bloquante.
+ * </p>
+ * <p>
+ * Endpoints exposés :
+ * <ul>
+ *   <li>{@code GET    /api/notifications}              — toutes les notifications de l'employé connecté</li>
+ *   <li>{@code GET    /api/notifications/unread}       — notifications non lues uniquement</li>
+ *   <li>{@code GET    /api/notifications/unread/count} — compteur de badge non lu</li>
+ *   <li>{@code POST   /api/notifications/mark-all-read} — marquer toutes les notifications comme lues</li>
+ *   <li>{@code PUT    /api/notifications/{id}/read}   — marquer une notification individuelle comme lue</li>
+ *   <li>{@code DELETE /api/notifications/{id}}        — supprimer une notification par identifiant</li>
+ *   <li>{@code DELETE /api/notifications}             — supprimer toutes les notifications de l'employé</li>
+ *   <li>{@code POST   /api/notifications}             — création manuelle (rôles RH/ADMIN uniquement)</li>
+ * </ul>
+ * </p>
  *
- * Stratégie d'identification :
- *   Le JWT Keycloak contient un claim custom "employee_id" (Long Oracle).
- *   Si absent, on retombe sur une réponse vide — pas d'erreur bloquante.
- *
- * Endpoints :
- *   GET    /api/notifications              → mes notifications
- *   GET    /api/notifications/unread       → non lues uniquement
- *   GET    /api/notifications/unread/count → compteur badge
- *   POST   /api/notifications/mark-all-read
- *   PUT    /api/notifications/{id}/read    → marquer une notification lue
- *   DELETE /api/notifications              → supprimer mes notifications
- *   POST   /api/notifications              → création manuelle (RH/ADMIN)
+ * @since 1.0
  */
 @RestController
 @RequestMapping("/api/notifications")
@@ -40,11 +56,22 @@ import java.util.List;
 @CrossOrigin(origins = "${app.cors.allowed-origin:http://localhost:4200}")
 public class NotificationController {
 
+    /** Service métier de gestion des notifications. */
     private final NotificationService notificationService;
+
+    /** Template JDBC pour la résolution de l'EMPLOYEE_ID via la table EMPLOYEES en fallback. */
     private final JdbcTemplate        jdbcTemplate;
 
     /* ── Mes notifications ───────────────────────── */
 
+    /**
+     * Retourne toutes les notifications de l'employé connecté,
+     * incluant les broadcasts destinés à son rôle.
+     *
+     * @param auth l'objet d'authentification Spring Security contenant le JWT Keycloak
+     * @return la liste des notifications triées par date décroissante,
+     *         ou une liste vide si l'employé n'est pas résolvable
+     */
     @GetMapping
     public ResponseEntity<List<NotificationDTO>> getMyNotifications(Authentication auth) {
         Long employeeId = extractEmployeeId(auth);
@@ -53,6 +80,13 @@ public class NotificationController {
         return ResponseEntity.ok(notificationService.getNotificationsByEmployeeAndRole(employeeId, role));
     }
 
+    /**
+     * Retourne uniquement les notifications non lues de l'employé connecté.
+     *
+     * @param auth l'objet d'authentification Spring Security
+     * @return la liste des notifications non lues triées par date décroissante,
+     *         ou une liste vide si l'employé n'est pas résolvable
+     */
     @GetMapping("/unread")
     public ResponseEntity<List<NotificationDTO>> getUnread(Authentication auth) {
         Long employeeId = extractEmployeeId(auth);
@@ -60,6 +94,13 @@ public class NotificationController {
         return ResponseEntity.ok(notificationService.getUnreadNotifications(employeeId));
     }
 
+    /**
+     * Retourne le nombre de notifications non lues de l'employé connecté.
+     * Utilisé par le frontend Angular pour alimenter le badge de notification.
+     *
+     * @param auth l'objet d'authentification Spring Security
+     * @return le nombre de notifications non lues, ou {@code 0} si l'employé est non résolvable
+     */
     @GetMapping("/unread/count")
     public ResponseEntity<Long> countUnread(Authentication auth) {
         Long employeeId = extractEmployeeId(auth);
@@ -69,6 +110,13 @@ public class NotificationController {
 
     /* ── Marquer comme lues ──────────────────────── */
 
+    /**
+     * Marque toutes les notifications non lues de l'employé connecté (personnelles
+     * et broadcasts de son rôle) comme lues.
+     *
+     * @param auth l'objet d'authentification Spring Security
+     * @return le nombre de notifications effectivement mises à jour
+     */
     @PostMapping("/mark-all-read")
     public ResponseEntity<Integer> markAllAsRead(Authentication auth) {
         Long employeeId = extractEmployeeId(auth);
@@ -78,6 +126,12 @@ public class NotificationController {
         return ResponseEntity.ok(updated);
     }
 
+    /**
+     * Marque une notification individuelle comme lue (accessible via PUT ou PATCH).
+     *
+     * @param id l'identifiant Oracle de la notification à marquer comme lue
+     * @return le DTO de la notification mise à jour avec son horodatage de lecture
+     */
     @PutMapping("/{id}/read")
     @PatchMapping("/{id}/read")
     public ResponseEntity<NotificationDTO> markOneAsRead(@PathVariable Long id) {
@@ -86,12 +140,24 @@ public class NotificationController {
 
     /* ── Supprimer mes notifications ─────────────── */
 
+    /**
+     * Supprime une notification par son identifiant.
+     *
+     * @param id l'identifiant Oracle de la notification à supprimer
+     * @return HTTP 204 No Content si la suppression réussit
+     */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteOne(@PathVariable Long id) {
         notificationService.deleteById(id);
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Supprime toutes les notifications personnelles de l'employé connecté.
+     *
+     * @param auth l'objet d'authentification Spring Security
+     * @return HTTP 204 No Content
+     */
     @DeleteMapping
     public ResponseEntity<Void> deleteMyNotifications(Authentication auth) {
         Long employeeId = extractEmployeeId(auth);
@@ -103,6 +169,14 @@ public class NotificationController {
 
     /* ── Création manuelle (RH / ADMIN) ──────────── */
 
+    /**
+     * Crée manuellement une notification via l'interface d'administration.
+     * Réservé aux utilisateurs ayant le rôle RH, ADMIN ou ADMIN_RH.
+     *
+     * @param request le corps de la requête contenant les données de la notification
+     *                (validé par Bean Validation)
+     * @return HTTP 201 Created avec le DTO de la notification créée
+     */
     @PostMapping
     @PreAuthorize("hasAnyRole('RH','ADMIN','ADMIN_RH')")
     public ResponseEntity<NotificationDTO> create(
@@ -180,6 +254,16 @@ public class NotificationController {
         return null;
     }
 
+    /**
+     * Endpoint de test pour vérifier l'envoi d'email depuis le service de notification.
+     * Simule un événement Kafka entrant et déclenche l'envoi d'un email vers l'adresse fournie.
+     * <p>
+     * À usage strictement interne / développement. Ne pas exposer en production.
+     * </p>
+     *
+     * @param emailDestinataire l'adresse email qui recevra le message de test
+     * @return un message de confirmation indiquant que l'envoi a été déclenché
+     */
     @PostMapping("/test-email-direct")
     public ResponseEntity<String> testEmailDirect(@RequestParam String emailDestinataire) {
         log.info("Déclenchement d'un test email pour : {}", emailDestinataire);

@@ -10,19 +10,51 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.config.Customizer;
 
+/**
+ * Configuration de la sécurité HTTP du microservice chat-service.
+ * <p>
+ * {@code @Configuration} : déclare cette classe comme source de beans Spring.
+ * <br>
+ * {@code @EnableWebSecurity} : active le support de Spring Security et remplace
+ * la configuration de sécurité automatique par cette classe personnalisée.
+ * <p>
+ * Stratégie d'authentification : OAuth2 Resource Server avec validation JWT (Keycloak).
+ * Les connexions WebSocket ({@code /ws/**}) sont ouvertes sans authentification HTTP
+ * car elles sont sécurisées au niveau STOMP par {@link WebSocketAuthChannelInterceptor}.
+ *
+ * @since 1.0
+ */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
     /**
-     * Completely bypass Spring Security for static uploads — no filter chain at all,
-     * so no JWT processing, no authentication, no 401 regardless of request headers.
+     * Exclut complètement les ressources statiques (fichiers uploadés) de la chaîne
+     * de filtres Spring Security — aucun traitement JWT, aucune authentification,
+     * aucune erreur 401, quels que soient les en-têtes de la requête.
+     *
+     * @return le personnalisateur de sécurité web configuré pour ignorer {@code /uploads/**}
      */
     @Bean
     public WebSecurityCustomizer webSecurityCustomizer() {
         return web -> web.ignoring().requestMatchers("/uploads/**");
     }
 
+    /**
+     * Définit la chaîne de filtres de sécurité principale.
+     * <ul>
+     *   <li>CORS activé avec la configuration par défaut (voir {@link WebConfig}).</li>
+     *   <li>CSRF désactivé (API stateless JWT).</li>
+     *   <li>Sessions sans état ({@code STATELESS}).</li>
+     *   <li>{@code /ws/**} et {@code /h2-console/**} accessibles sans authentification.</li>
+     *   <li>Toutes les autres requêtes nécessitent un JWT valide (validé par Keycloak).</li>
+     *   <li>La console H2 autorise les iframes de même origine.</li>
+     * </ul>
+     *
+     * @param http le constructeur de configuration de sécurité HTTP
+     * @return la chaîne de filtres de sécurité construite
+     * @throws Exception en cas d'erreur de configuration Spring Security
+     */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 
@@ -46,6 +78,14 @@ public class SecurityConfig {
         return http.build();
     }
 
+    /**
+     * Convertisseur d'authentification JWT qui extrait les rôles Keycloak
+     * depuis le claim {@code realm_access.roles} et les transforme en
+     * {@link org.springframework.security.core.GrantedAuthority} Spring Security
+     * avec le préfixe {@code ROLE_}.
+     *
+     * @return le convertisseur JWT configuré pour lire les rôles Keycloak realm
+     */
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();

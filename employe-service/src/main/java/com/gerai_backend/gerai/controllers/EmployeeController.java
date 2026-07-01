@@ -21,8 +21,20 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Correction : tous les @PathVariable UUID id → Long id
- * (la PK est maintenant NUMBER IDENTITY Oracle, pas UUID).
+ * Contrôleur REST gérant toutes les opérations CRUD sur les employés de la plateforme Synapse.
+ * Expose les routes {@code /employees} et {@code /employes} (double mapping pour compatibilité Angular).
+ *
+ * <p>@RestController : combine {@code @Controller} et {@code @ResponseBody}, tous les retours
+ * sont sérialisés en JSON.</p>
+ * <p>@RequestMapping : préfixe les routes sur {@code /employees} et {@code /employes}.</p>
+ *
+ * <p>Les requêtes de liste sont effectuées via {@link org.springframework.jdbc.core.JdbcTemplate}
+ * natif avec plusieurs niveaux de repli (avec jointures, sans jointures, minimal)
+ * pour garantir la résilience face aux évolutions du schéma Oracle.</p>
+ *
+ * <p>Note : la clé primaire est {@code Long} (NUMBER IDENTITY Oracle), plus UUID.</p>
+ *
+ * @since 1.0
  */
 @Slf4j
 @RestController
@@ -42,13 +54,26 @@ public class EmployeeController {
         this.jdbcTemplate       = jdbcTemplate;
     }
 
+    /**
+     * Gère les exceptions {@link IllegalArgumentException} levées lors de conflits métier
+     * (ex. email déjà existant) et retourne une réponse HTTP 409 Conflict.
+     *
+     * @param ex l'exception levée contenant le message d'erreur
+     * @return une réponse 409 avec le message d'erreur dans un corps JSON
+     */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleConflict(IllegalArgumentException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(Map.of("message", ex.getMessage()));
     }
 
-    // Create new employee
+    /**
+     * Crée un nouvel employé : provisionne un compte Keycloak, insère l'enregistrement
+     * en base Oracle et envoie le mot de passe temporaire par email.
+     *
+     * @param request les données de l'employé à créer (validées avec {@code @Valid})
+     * @return une réponse HTTP 201 contenant les informations de l'employé créé
+     */
     @PostMapping
     public ResponseEntity<CreateEmployeeResponse> createEmployee(
             @RequestBody @Valid CreateEmployeeRequest request) {
@@ -56,7 +81,16 @@ public class EmployeeController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    // Get all employees — native query mapped to Angular Employe shape
+    /**
+     * Retourne la liste de tous les employés actifs (statut différent de {@code DEMISSION}),
+     * enrichie avec le nom du département et le titre du poste via jointures SQL.
+     *
+     * <p>Utilise une stratégie de repli en 4 niveaux : requête complète avec jointures,
+     * puis département seul, puis sans jointures, puis colonnes minimales.</p>
+     *
+     * @return une réponse HTTP 200 avec la liste des employés au format DTO Angular,
+     *         ou une liste vide en cas d'échec de toutes les requêtes
+     */
     @GetMapping
     public ResponseEntity<List<Map<String, Object>>> getAllEmployees() {
         // Try full query (with dept + position joins), then dept-only, then bare minimum
@@ -115,7 +149,16 @@ public class EmployeeController {
         }
     }
 
-    // Get employee by ID — native JDBC with fallback
+    /**
+     * Retourne le profil complet d'un employé par son identifiant Oracle,
+     * avec jointures sur les tables DEPARTMENTS et POSITIONS.
+     *
+     * <p>Utilise la même stratégie de repli en 4 niveaux que {@link #getAllEmployees()}.</p>
+     *
+     * @param id l'identifiant Oracle ({@code EMPLOYEE_ID}) de l'employé
+     * @return une réponse HTTP 200 avec le DTO de l'employé, 404 si introuvable,
+     *         ou 500 si toutes les requêtes échouent
+     */
     @GetMapping("/{id}")
     public ResponseEntity<Map<String, Object>> getEmployeeById(@PathVariable Long id) {
         try {
@@ -175,7 +218,13 @@ public class EmployeeController {
         }
     }
 
-    // Update employee — CORRECTION : UUID → Long
+    /**
+     * Met à jour les informations d'un employé existant.
+     *
+     * @param id      l'identifiant Oracle ({@code EMPLOYEE_ID}) de l'employé à modifier
+     * @param request les nouvelles données de l'employé (validées avec {@code @Valid})
+     * @return une réponse HTTP 200 contenant l'entité {@link com.gerai_backend.gerai.models.Employee} mise à jour
+     */
     @PutMapping("/{id}")
     public ResponseEntity<Employee> updateEmployee(
             @PathVariable Long id,
@@ -184,14 +233,26 @@ public class EmployeeController {
         return ResponseEntity.ok(updated);
     }
 
-    // Delete employee — CORRECTION : UUID → Long
+    /**
+     * Supprime un employé : désactive son compte Keycloak, puis tente une suppression
+     * physique (avec repli en soft-delete {@code DEMISSION} si des contraintes FK bloquent).
+     *
+     * @param id l'identifiant Oracle ({@code EMPLOYEE_ID}) de l'employé à supprimer
+     * @return une réponse HTTP 204 No Content après suppression réussie
+     */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteEmployee(@PathVariable Long id) {
         employeeService.deleteEmployee(id);
         return ResponseEntity.noContent().build();
     }
 
-    // Global HR stats — GET /api/employes/stats
+    /**
+     * Retourne les statistiques RH globales de la plateforme :
+     * nombre total d'employés, employés actifs, nouveaux ce mois-ci,
+     * congés en attente et formations actives.
+     *
+     * @return une réponse HTTP 200 avec les statistiques agrégées (valeurs à 0 en cas d'erreur SQL)
+     */
     @GetMapping("/stats")
     public ResponseEntity<Map<String, Object>> getGlobalStats() {
         Map<String, Object> stats = new LinkedHashMap<>();
@@ -221,7 +282,14 @@ public class EmployeeController {
         return ResponseEntity.ok(stats);
     }
 
-    // Per-employee stats — GET /api/employes/{id}/stats
+    /**
+     * Retourne les statistiques individuelles d'un employé pour l'année en cours :
+     * formations suivies, congés restants, taux de présence et objectifs atteints.
+     *
+     * @param id l'identifiant Oracle ({@code EMPLOYEE_ID}) de l'employé
+     * @return une réponse HTTP 200 avec les statistiques de l'employé
+     *         (valeurs par défaut si les données ne sont pas disponibles)
+     */
     @GetMapping("/{id}/stats")
     public ResponseEntity<Map<String, Object>> getEmployeeStats(@PathVariable Long id) {
         Map<String, Object> stats = new LinkedHashMap<>();
@@ -249,6 +317,12 @@ public class EmployeeController {
         return ResponseEntity.ok(stats);
     }
 
+    /**
+     * Convertit une ligne brute de résultat SQL en DTO au format attendu par Angular.
+     *
+     * @param r la ligne SQL sous forme de {@code Map<String, Object>} (clés en majuscules Oracle)
+     * @return un {@code Map} avec les clés en camelCase attendues par le frontend Angular
+     */
     private Map<String, Object> toDto(Map<String, Object> r) {
         Map<String, Object> dto = new LinkedHashMap<>();
         dto.put("id",            r.get("EMPLOYEE_ID"));
@@ -269,17 +343,34 @@ public class EmployeeController {
         return dto;
     }
 
+    /**
+     * Convertit un objet en {@code String} en gérant la valeur {@code null}.
+     *
+     * @param val la valeur à convertir
+     * @return la représentation en chaîne de caractères, ou une chaîne vide si {@code null}
+     */
     private String str(Object val) {
         return val != null ? val.toString() : "";
     }
 
+    /**
+     * Convertit un objet {@link Number} en entier primitif.
+     *
+     * @param val la valeur à convertir (doit implémenter {@link Number})
+     * @return la valeur entière, ou {@code 0} si {@code null} ou non numérique
+     */
     private int toInt(Object val) {
         if (val == null) return 0;
         if (val instanceof Number n) return n.intValue();
         return 0;
     }
 
-    // Employees managed by a specific chef — GET /api/employes/chef/{chefId}
+    /**
+     * Retourne la liste des employés dont le manager direct est l'utilisateur identifié par {@code chefId}.
+     *
+     * @param chefId l'identifiant Oracle ({@code EMPLOYEE_ID}) du manager
+     * @return une réponse HTTP 200 avec la liste des membres de l'équipe, ou une liste vide en cas d'erreur
+     */
     @GetMapping("/chef/{chefId}")
     public ResponseEntity<List<Employee>> getByChef(@PathVariable Long chefId) {
         try {
@@ -290,7 +381,13 @@ public class EmployeeController {
         }
     }
 
-    // List all positions for form dropdowns — GET /api/employes/postes
+    /**
+     * Retourne la liste de tous les postes disponibles pour alimenter les listes déroulantes
+     * des formulaires Angular (id + libellé du poste).
+     *
+     * @return une réponse HTTP 200 avec la liste des postes triés par titre,
+     *         ou une liste vide si la table {@code POSITIONS} est inaccessible
+     */
     @GetMapping("/postes")
     public ResponseEntity<List<Map<String, Object>>> getPositions() {
         try {
@@ -303,7 +400,13 @@ public class EmployeeController {
         }
     }
 
-    // List all departments for form dropdowns — GET /api/employes/departements
+    /**
+     * Retourne la liste de tous les départements pour alimenter les listes déroulantes
+     * des formulaires Angular (id + nom du département).
+     *
+     * @return une réponse HTTP 200 avec la liste des départements triés par nom,
+     *         ou une liste vide si la table {@code DEPARTMENTS} est inaccessible
+     */
     @GetMapping("/departements")
     public ResponseEntity<List<Map<String, Object>>> getDepartments() {
         try {
@@ -316,7 +419,17 @@ public class EmployeeController {
         }
     }
 
-    // Search by email (?email=) or free text (?q=)
+    /**
+     * Recherche des employés actifs par email exact ({@code ?email=}) ou par texte libre
+     * ({@code ?q=} sur prénom, nom et email, insensible à la casse).
+     *
+     * <p>Retourne une liste vide si aucun paramètre n'est fourni.
+     * Utilise une stratégie de repli (avec jointures, puis sans jointures).</p>
+     *
+     * @param email adresse email exacte à rechercher (optionnel)
+     * @param q     texte libre à rechercher dans prénom, nom ou email (optionnel)
+     * @return une réponse HTTP 200 avec la liste des employés correspondants au format DTO Angular
+     */
     @GetMapping("/search")
     public ResponseEntity<List<Map<String, Object>>> search(
             @RequestParam(required = false) String email,
